@@ -7,8 +7,12 @@ export const sqlite=new DatabaseSync(resolve(dir,'voz.sqlite'));
 sqlite.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
 let backedUp=false;
 const existing=sqlite.prepare("SELECT name FROM sqlite_master WHERE name='peers'").get();
-const migrated=sqlite.prepare("SELECT name FROM sqlite_master WHERE name='app_migrations'").get()&&sqlite.prepare('SELECT version FROM app_migrations WHERE version=2').get();
-if(existing&&!migrated){
+const migrationTable=sqlite.prepare("SELECT name FROM sqlite_master WHERE name='app_migrations'").get();
+const migratedV2=migrationTable&&sqlite.prepare('SELECT version FROM app_migrations WHERE version=2').get();
+const migratedV4=migrationTable&&sqlite.prepare('SELECT version FROM app_migrations WHERE version=4').get();
+// Faça uma cópia consistente antes tanto da migração comunitária legada quanto
+// da nova migração de administração/permissões em volumes persistentes.
+if(existing&&(!migratedV2||!migratedV4)){
  const backupPath=resolve(dir,'before-community-'+Date.now()+'.sqlite').replaceAll("'","''");
  sqlite.exec("VACUUM INTO '"+backupPath+"'");backedUp=true;
 }

@@ -2,6 +2,17 @@
 
 Aplicação de comunidades com identidade visual própria vermelho/preto, baseada na versão `voz-railway-grupos-bope.zip`. A organização da interface é inspirada em plataformas de comunidades, sem logos, brasões ou assets oficiais. Não é uma reprodução completa do Discord.
 
+## Atualização 0.3.0 — administração, layout e desempenho
+
+- Novo painel de servidor com **Visão geral, Membros, Cargos, Banimentos e Registro de auditoria**.
+- Hierarquia real de **Dono → Administrador → Moderador → Membro**, validada no servidor. Um cargo não pode moderar alguém do mesmo nível ou acima.
+- O Dono pode transferir a propriedade e gerenciar todos os cargos abaixo dele. Administradores podem gerenciar cargos abaixo de Admin; Moderadores podem aplicar timeout e expulsar membros abaixo do próprio nível.
+- **Expulsar, banir/desbanir e timeout** de 1 minuto até 28 dias. Timeout bloqueia mensagens e entrada em voz dentro do servidor, mas não bloqueia DMs.
+- Canais agora têm **tópico/descrição e modo lento**. Moderadores, Administradores e o Dono ignoram o limite de modo lento.
+- O servidor ganhou descrição e um painel de convite com renovação do link. A migração `4` adiciona os novos campos, banimentos e auditoria sem apagar o histórico existente.
+- Layout renovado com painéis mais claros, microanimação de clique, destaque de seleção, fundo animado leve e suporte a `prefers-reduced-motion`.
+- Menos carga em segundo plano: polling de comunidades fica em ~2,6 s com a aba ativa e ~12 s oculta; presença fica em ~3,5 s ativa e ~10 s oculta. Reações/respostas de mensagens também são carregadas em lote para reduzir consultas repetidas ao SQLite.
+
 ## Atualização 0.2.1 — áudio e transmissão ampliada
 
 - Corrigida a associação do microfone de quem responde à chamada: agora são usadas as faixas oferecidas pelo outro participante, evitando faixas locais sem negociação e áudio em apenas um sentido.
@@ -38,8 +49,8 @@ Referência técnica: [negociação WebRTC](https://www.w3.org/TR/webrtc/).
 
 - Criar, renomear, excluir e alternar servidores; entrar e sair; lista de membros.
 - Um código e link de convite por servidor, com revogação/renovação por administradores.
-- Cargos fixos: dono, administrador, moderador e membro; atribuição pelo dono, com verificação no servidor.
-- Canais de texto e de voz: criação, renomeação e exclusão. Máximo de 50 canais por servidor.
+- Cargos fixos: dono, administrador, moderador e membro, com hierarquia e verificação no servidor; transferência de propriedade e gerenciamento de cargos abaixo do nível do administrador.
+- Canais de texto e de voz: criação, renomeação e exclusão, tópico/descrição e modo lento. Máximo de 50 canais por servidor.
 - Chat persistente por canal (inclusive uma conversa associada aos canais de voz), mensagens de até 2.000 caracteres e histórico paginado em blocos de 80.
 - Respostas no mesmo canal, edição das próprias mensagens, exclusão, cinco reações alternáveis e mensagens fixadas.
 - Indicador de digitando com expiração; atualização periódica das conversas.
@@ -49,7 +60,8 @@ Referência técnica: [negociação WebRTC](https://www.w3.org/TR/webrtc/).
 - Seleção de microfone e saída quando o navegador permite; mute/deafen com restauração do mute anterior; cancelamento de eco/redução de ruído e detecção de fala.
 - WebRTC mesh com os mecanismos anteriores de TURN, negociação de tela, recuperação de áudio, reconexão, identificação de abas e indicação de fala.
 - Presets de compartilhamento 540p, 720p, 1080p, 1440p e 2160p/4K; áudio de compartilhamento quando oferecido pelo navegador; ajuste de bitrate/resolução/FPS conforme número de participantes.
-- Tema tático vermelho, grafite e preto, layout adaptado a telas pequenas, diálogos com gerenciamento de foco e controles por teclado.
+- Painel administrativo com expulsão, banimento/desbanimento, timeout, auditoria e descrição do servidor.
+- Tema tático vermelho, grafite e preto renovado, layout adaptado a telas pequenas, animações leves de fundo/clique, diálogos com gerenciamento de foco e controles por teclado.
 
 ## Permissões
 
@@ -58,10 +70,13 @@ Referência técnica: [negociação WebRTC](https://www.w3.org/TR/webrtc/).
 | Ler/enviar mensagens, responder, reagir e usar voz | Sim | Sim | Sim | Sim |
 | Editar/excluir mensagens próprias | Sim | Sim | Sim | Sim |
 | Excluir mensagens de outros e fixar/desafixar | Não | Sim | Sim | Sim |
-| Gerenciar canais, renomear servidor e renovar convite | Não | Não | Sim | Sim |
-| Atribuir cargos e excluir servidor | Não | Não | Não | Sim |
+| Timeout e expulsar cargos abaixo | Não | Sim | Sim | Sim |
+| Banir/desbanir cargos abaixo | Não | Não | Sim | Sim |
+| Gerenciar canais, servidor, convite e auditoria | Não | Não | Sim | Sim |
+| Alterar cargos | Não | Não | Abaixo de Admin | Todos abaixo do Dono |
+| Transferir propriedade / excluir servidor | Não | Não | Não | Sim |
 
-O cargo do dono é fixo. O dono não pode sair sem excluir o servidor. Qualquer membro pode compartilhar o convite vigente. Todos os canais do servidor são visíveis aos membros: não há permissões individuais por canal.
+O Dono pode transferir a propriedade antes de sair. Administradores e Moderadores só podem agir em cargos abaixo do próprio nível. Todos os canais continuam visíveis aos membros: ainda não há permissões individuais por canal nem cargos personalizados.
 
 ## Deploy no Render
 
@@ -132,8 +147,8 @@ Para este comando Docker, use `DATA_DIR=/data` e `PORT=8080` no `.env`. Microfon
 
 O arquivo continua sendo `DATA_DIR/voz.sqlite`. Antes da atualização, faça um backup e mantenha a versão antiga do código para eventual retorno.
 
-1. Ao detectar um banco existente ainda não migrado, a inicialização cria um backup SQLite consistente, incluindo WAL, em `before-community-<timestamp>.sqlite` dentro de `DATA_DIR`, antes das alterações legadas.
-2. A migração nova usa uma transação e registra a versão em `app_migrations`. Em falha, ela desfaz suas alterações e o serviço não inicia silenciosamente com um esquema incompleto. O backup permite recuperar o estado anterior.
+1. Ao detectar um banco existente que ainda precisa da migração comunitária ou da nova migração de administração, a inicialização cria um backup SQLite consistente, incluindo WAL, em `before-community-<timestamp>.sqlite` dentro de `DATA_DIR` antes de alterar o esquema.
+2. As migrações usam transações e registram a versão em `app_migrations`. A versão `4` adiciona descrição do servidor, tópico/modo lento, timeout, banimentos e auditoria. Em falha, a migração desfaz suas alterações em vez de registrar sucesso.
 3. Cada grupo antigo recebe um canal `geral` com seu histórico de `group_messages` e canais de voz Lounge, Jogatina e Foco. O chat antigo dessas salas é copiado para suas conversas associadas. Salas avulsas sem grupo permanecem nas tabelas antigas, sem interface de importação.
 4. IDs de grupo, códigos de convite, membros e nomes são preservados. O dono recupera o cargo correto mesmo se o endpoint antigo de convite o tiver rebaixado por engano.
 5. As tabelas antigas `groups`, `group_members`, `group_messages` e `messages` não são apagadas durante a migração. Rodar a inicialização novamente não recopia o histórico.
@@ -152,38 +167,33 @@ Esse comando usa `DATA_DIR` do ambiente e cria `backup-<timestamp>.sqlite` por `
 
 ## Limites concretos
 
-- **Não há equivalência total com Discord.** Não inclui bots, videochamada por câmera, busca global, threads, categorias editáveis, eventos, notificações push, contagem de não lidas, banimentos, bloqueio de DMs, cargos personalizados, permissões por canal ou transferência de propriedade.
+- **Não há equivalência total com Discord.** Não inclui bots, videochamada por câmera, busca global, threads, categorias editáveis, eventos, notificações push, contagem de não lidas, bloqueio de DMs, cargos personalizados ou permissões individuais por canal.
 - Cargos são quatro níveis fixos. DMs têm envio/leitura e paginação; edição, reações e fixação são funcionalidades dos canais, não das DMs.
 - O modelo de conta é uma **chave privada do navegador**, não login com e-mail/senha, 2FA ou recuperação por e-mail. Perder a chave e limpar o navegador pode tornar a identidade inacessível. Guarde a chave com cuidado.
 - DMs só são acessíveis enquanto há um servidor em comum. Os registros continuam no banco ao deixar/excluir servidores, mas deixam de ser expostos quando não existe associação em comum. O administrador da hospedagem tem acesso ao banco; não há criptografia ponta a ponta para o chat.
-- Chat/presença usam polling (~1,8 s; voz ~450 ms), não WebSockets. Digitação expira em 5 s; presença depende do heartbeat do navegador e pode parecer offline em abas suspensas.
+- Chat/presença usam polling, não WebSockets. Comunidades atualizam em ~2,6 s com a aba ativa e ~12 s oculta; presença em ~3,5 s ativa e ~10 s oculta; voz mantém seu ciclo de sinalização próprio. Digitação expira em 5 s e abas suspensas ainda podem parecer offline.
 - Histórico: 80 mensagens por página; painel de fixadas mostra as 100 fixadas mais recentes. Mensagens sem formatação Markdown ou previews externos; texto é renderizado escapado pelo React.
 - WebRTC é **mesh**, até 10 participantes por sala. Cada transmissor envia uma cópia a cada destinatário. 4K não é garantido e nem todos os presets mantêm 30 FPS com muitos participantes; a adaptação considera quantidade de peers e a adaptação interna do navegador, sem controlador próprio baseado em telemetria de rede.
 - A conexão deve ser testada com navegadores e redes reais. Compartilhar áudio do sistema/aba e escolher a saída variam por navegador/SO. Em celulares, compartilhamento de tela e seleção de saída podem não estar disponíveis.
 - Reconexão de sinalização tem tentativas limitadas; após falha prolongada/expiração, é preciso entrar novamente. Reiniciar o servidor pode interromper chamadas em andamento.
 - SQLite e sinalização pressupõem **uma instância/réplica**. Não escale horizontalmente este pacote nem compartilhe o arquivo entre vários serviços. Para comunidades grandes, é necessária outra arquitetura, especialmente um SFU para mídia.
-- Há validação de origem, autenticação, autorização e limite básico de ações por identidade. Não há proteção completa contra abuso automatizado, auditoria de moderação ou quotas globais de cadastro. O cadastro por dispositivo é aberto. A variável `ALLOW_LEGACY_ROOMS=1` é usada exclusivamente pelo teste de protocolo antigo; **não a configure em produção**, pois permite salas avulsas sem controle de membros.
+- Há validação de origem, autenticação, autorização, hierarquia de moderação, registro de auditoria e limite básico de ações por identidade. Ainda não há proteção completa contra abuso automatizado nem quotas globais de cadastro. O cadastro por dispositivo é aberto. A variável `ALLOW_LEGACY_ROOMS=1` é usada exclusivamente pelo teste de protocolo antigo; **não a configure em produção**, pois permite salas avulsas sem controle de membros.
 
 ## Validação desta entrega
 
-Executados com Node.js 24.19.0:
+Neste ambiente foi usado Node.js 22.16.0. Os testes de integração de servidor, comunidade, migração e o novo cenário administrativo passaram, incluindo hierarquia de cargos, timeout, modo lento, ban/desban, auditoria e transferência de propriedade.
 
-- `node --test server/test.mjs server/community.test.mjs server/migration.test.mjs server/rtc-media.test.mjs`: 9 testes de integração/migração passaram, com múltiplas verificações em cada cenário.
-- `pnpm typecheck` (TypeScript sem emissão): aprovado.
-- `pnpm build`: build Vite de produção aprovado.
-- Endpoint local e compilação para prévia: respondendo.
+O teste `server/rtc-media.test.mjs` não roda em Node 22 porque importa TypeScript diretamente; o projeto declara **Node 24+**, onde esse teste usa o suporte esperado. Como as dependências não estão instaladas neste ZIP de trabalho, o build Vite e o typecheck completo não foram executados aqui. Foi feita checagem de sintaxe dos arquivos JS e uma verificação de parsing TSX sem erros de sintaxe.
 
-Cobertura: limite de participantes, sinalização, token de peer, avatar, sessões/abas distintas no protocolo, chat, convites, cargos, isolamento de canais e DMs, respostas cruzadas bloqueadas, edição/exclusão, reações, fixação, digitação, presença, acesso à voz, reinício com persistência, migração idempotente, backup consistente e rollback de falha.
-
-**Não executados:** build da imagem Docker (Docker indisponível neste ambiente), deploy real no Render/Railway, interação ponta a ponta de UI em navegador, chamada real entre dispositivos, qualidade da transmissão/4K em rede externa. O teste de sinalização não substitui um teste real de mídia.
-
-Antes de disponibilizar para sua equipe, teste com duas contas/navegadores: convite, cargos, mensagens entre canais, DM, mute/deafen, troca de microfone, transmissão, saída/retorno à call durante transmissão e reinício do serviço. Use também uma rede móvel para verificar TURN.
+Antes de publicar, rode em Node 24+: `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm typecheck` e `pnpm build`. Depois teste em dois navegadores: cargos, timeout, expulsão/banimento, transferência de dono, modo lento, envio de mídia, DM e voz.
 
 ## Estrutura
 
 - `app/page.tsx`: superfície da comunidade e integração de voz.
 - `app/use-community.ts`: navegação, polling e proteção contra respostas antigas.
 - `app/community-settings.tsx`: perfil, áudio e restauração de acesso.
+- `app/server-settings.tsx`: painel de administração, cargos, banimentos e auditoria.
+- `app/channel-settings.tsx`: nome, tópico, modo lento e exclusão de canal.
 - `app/use-call.ts` e `app/media.tsx`: WebRTC, mídia e detecção de fala.
 - `server/community.mjs`: API de comunidades e permissões.
 - `server/access.mjs` e `server/room.mjs`: acesso às salas e sinalização.

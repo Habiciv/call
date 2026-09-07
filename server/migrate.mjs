@@ -37,31 +37,64 @@ export function migrateCommunity(db,backedUp=false) {
    db.exec('COMMIT');
   }catch(e){db.exec('ROLLBACK');throw e}
  }
- if(db.prepare('SELECT version FROM app_migrations WHERE version=3').get())return;
+ if(!db.prepare('SELECT version FROM app_migrations WHERE version=3').get()){
+  db.exec('BEGIN IMMEDIATE');
+  try{
+   db.exec(`
+    CREATE TABLE attachments(
+     id TEXT PRIMARY KEY,
+     user_key TEXT NOT NULL,
+     name TEXT NOT NULL,
+     mime TEXT NOT NULL,
+     size INTEGER NOT NULL,
+     path TEXT NOT NULL UNIQUE,
+     created INTEGER NOT NULL,
+     used INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX attachments_owner ON attachments(user_key,created);
+    ALTER TABLE channel_messages ADD COLUMN attachment_id TEXT;
+    ALTER TABLE channel_messages ADD COLUMN attachment_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE channel_messages ADD COLUMN attachment_type TEXT NOT NULL DEFAULT '';
+    ALTER TABLE channel_messages ADD COLUMN attachment_size INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE direct_messages ADD COLUMN attachment_id TEXT;
+    ALTER TABLE direct_messages ADD COLUMN attachment_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE direct_messages ADD COLUMN attachment_type TEXT NOT NULL DEFAULT '';
+    ALTER TABLE direct_messages ADD COLUMN attachment_size INTEGER NOT NULL DEFAULT 0;
+   `);
+   db.prepare('INSERT INTO app_migrations VALUES(3,?)').run(Date.now());
+   db.exec('COMMIT');
+  }catch(e){db.exec('ROLLBACK');throw e}
+ }
+ if(db.prepare('SELECT version FROM app_migrations WHERE version=4').get())return;
  db.exec('BEGIN IMMEDIATE');
  try{
   db.exec(`
-   CREATE TABLE attachments(
-    id TEXT PRIMARY KEY,
+   ALTER TABLE groups ADD COLUMN description TEXT NOT NULL DEFAULT '';
+   ALTER TABLE channels ADD COLUMN topic TEXT NOT NULL DEFAULT '';
+   ALTER TABLE channels ADD COLUMN slowmode INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE group_members ADD COLUMN timeout_until INTEGER NOT NULL DEFAULT 0;
+   CREATE TABLE group_bans(
+    group_id TEXT NOT NULL,
     user_key TEXT NOT NULL,
-    name TEXT NOT NULL,
-    mime TEXT NOT NULL,
-    size INTEGER NOT NULL,
-    path TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    banned_by TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
     created INTEGER NOT NULL,
-    used INTEGER NOT NULL DEFAULT 0
+    PRIMARY KEY(group_id,user_key)
    );
-   CREATE INDEX attachments_owner ON attachments(user_key,created);
-   ALTER TABLE channel_messages ADD COLUMN attachment_id TEXT;
-   ALTER TABLE channel_messages ADD COLUMN attachment_name TEXT NOT NULL DEFAULT '';
-   ALTER TABLE channel_messages ADD COLUMN attachment_type TEXT NOT NULL DEFAULT '';
-   ALTER TABLE channel_messages ADD COLUMN attachment_size INTEGER NOT NULL DEFAULT 0;
-   ALTER TABLE direct_messages ADD COLUMN attachment_id TEXT;
-   ALTER TABLE direct_messages ADD COLUMN attachment_name TEXT NOT NULL DEFAULT '';
-   ALTER TABLE direct_messages ADD COLUMN attachment_type TEXT NOT NULL DEFAULT '';
-   ALTER TABLE direct_messages ADD COLUMN attachment_size INTEGER NOT NULL DEFAULT 0;
+   CREATE INDEX group_bans_group ON group_bans(group_id,created);
+   CREATE TABLE moderation_log(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id TEXT NOT NULL,
+    actor_key TEXT NOT NULL DEFAULT '',
+    target_key TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL,
+    details TEXT NOT NULL DEFAULT '',
+    created INTEGER NOT NULL
+   );
+   CREATE INDEX moderation_log_group ON moderation_log(group_id,id);
   `);
-  db.prepare('INSERT INTO app_migrations VALUES(3,?)').run(Date.now());
+  db.prepare('INSERT INTO app_migrations VALUES(4,?)').run(Date.now());
   db.exec('COMMIT');
  }catch(e){db.exec('ROLLBACK');throw e}
 }
