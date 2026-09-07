@@ -13,6 +13,7 @@ test('Communities: auth, permissions, channels, edits, replies, reactions, pins,
  async function stop(){if(child?.exitCode===null){const done=new Promise(r=>child.once('exit',r));child.kill();await done}}
  async function req(credential,action,extra={},path='/api/community'){const r=await fetch(origin+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Authorization:'Bearer '+(credential||'')},body:JSON.stringify({action,...extra})});return {status:r.status,data:await r.json()}}
  async function ok(c,a,e){const r=await req(c,a,e);assert.equal(r.status,200,JSON.stringify(r));return r.data}
+ async function upload(c,name,type,bytes){const r=await fetch(origin+'/api/upload',{method:'POST',headers:{Origin:origin,Authorization:'Bearer '+c,'Content-Type':type,'X-File-Name':encodeURIComponent(name)},body:bytes});const data=await r.json();assert.equal(r.status,200,JSON.stringify(data));return data}
  try{
  await start();
  const A=(await ok('','bootstrap',{name:'Alice'})).credential,B=(await ok('','bootstrap',{name:'Bruno'})).credential,C=(await ok('','bootstrap',{name:'Clara'})).credential;
@@ -43,11 +44,19 @@ test('Communities: auth, permissions, channels, edits, replies, reactions, pins,
  d=await ok(A,'channelCreate',{...scope,name:'Missões',kind:'text'});const second=d.activeChannelId;
  assert.equal((await req(B,'message',{groupId:g.id,channelId:second,message:'Resposta cruzada',replyId:mid})).status,400);
  assert.equal((await ok(B,'poll',{groupId:g.id,channelId:second})).messages.length,0);
+ const image=await upload(A,'mapa.png','image/png',Buffer.from([137,80,78,71,13,10,26,10]));
+ let media=await ok(A,'message',{groupId:g.id,channelId:second,message:'Imagem da operação',attachmentId:image.id});assert.equal(media.messages[0].attachmentType,'image/png');assert.equal(media.messages[0].attachmentName,'mapa.png');
+ const imageGet=await fetch(origin+image.url);assert.equal(imageGet.status,200);assert.equal(imageGet.headers.get('content-type'),'image/png');assert.equal((await imageGet.arrayBuffer()).byteLength,8);
+ const video=await upload(B,'clipe.mp4','video/mp4',Buffer.from([0,0,0,24,102,116,121,112,109,112,52,50]));
+ media=await ok(B,'message',{groupId:g.id,channelId:second,message:'',attachmentId:video.id});assert.equal(media.messages[1].attachmentType,'video/mp4');
+ const ranged=await fetch(origin+video.url,{headers:{Range:'bytes=0-3'}});assert.equal(ranged.status,206);assert.equal(ranged.headers.get('content-range'),'bytes 0-3/12');assert.equal((await ranged.arrayBuffer()).byteLength,4);
  await ok(A,'channelRename',{groupId:g.id,channelId:second,name:'Operações'});
  assert.equal((await ok(B,'poll',scope)).channels.find(c=>c.id===second).name,'Operações');
  await ok(A,'dmSend',{...scope,target:bKey,message:'Conversa privada'});
  const aKey=(await ok(A,'poll',scope)).me.userKey;
  d=await ok(B,'poll',{...scope,dmTarget:aKey});assert.equal(d.dms.length,1);assert.equal(d.dms[0].body,'Conversa privada');
+ const dmImage=await upload(B,'dm.png','image/png',Buffer.from([137,80,78,71]));
+ await ok(B,'dmSend',{...scope,target:aKey,message:'',attachmentId:dmImage.id});d=await ok(A,'poll',{...scope,dmTarget:bKey});assert.equal(d.dms.length,2);assert.equal(d.dms[1].attachmentType,'image/png');assert.equal(d.dms[1].body,'');
  assert.equal((await req(C,'dmSend',{target:bKey,message:'intruso'})).status,403);
  assert.equal((await ok(C,'poll',{...scope,dmTarget:bKey})).dms.length,0);
  await ok(B,'profile',{...scope,name:'Bruno atualizado',avatar:'',status:'Em missão',presence:'busy'});
@@ -61,7 +70,7 @@ test('Communities: auth, permissions, channels, edits, replies, reactions, pins,
  const pres=await fetch(origin+'/api/presence?space='+g.space,{headers:{Authorization:'Bearer '+C}});assert.equal(pres.status,403);
  const presOk=await fetch(origin+'/api/presence?space='+g.space,{headers:{Authorization:'Bearer '+B}});assert.equal(presOk.status,200);
  await ok(A,'invite',scope);assert.equal((await req(C,'join',{code:oldCode})).status,404);
- await stop();await start();assert.equal((await ok(B,'poll',scope)).messages.length,2);assert.equal((await ok(B,'poll',{...scope,dmTarget:aKey})).dms.length,1);
+ await stop();await start();assert.equal((await ok(B,'poll',scope)).messages.length,2);assert.equal((await ok(B,'poll',{...scope,dmTarget:aKey})).dms.length,2);
  await ok(B,'deleteMessage',{...scope,messageId:mid});d=await ok(A,'poll',scope);assert.equal(d.pinned.length,0);assert.equal(d.messages.length,1);assert.equal(d.messages[0].reply,null);
  await ok(A,'channelDelete',{groupId:g.id,channelId:second});assert.ok(!(await ok(B,'poll',scope)).channels.some(c=>c.id===second));
  await ok(B,'leave',scope);assert.equal((await ok(A,'poll',{...scope,dmTarget:bKey})).dmAllowed,false);

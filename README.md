@@ -16,6 +16,14 @@ Aplicação de comunidades com identidade visual própria vermelho/preto, basead
 
 Referência técnica: [negociação WebRTC](https://www.w3.org/TR/webrtc/).
 
+
+## Atualização — envio de imagem e vídeo
+
+- O botão de clipe no compositor envia imagens JPG, PNG, WEBP e GIF e vídeos MP4/WEBM de até 10 MB.
+- Anexos funcionam em canais e mensagens diretas, com texto opcional.
+- Imagens aparecem no próprio chat e vídeos usam player com carregamento por partes (HTTP Range).
+- A atualização cria a migração `3` do banco para guardar os metadados dos anexos; os arquivos ficam no diretório persistente `DATA_DIR/uploads`.
+
 ## Começar
 
 1. Abra o site e clique em **Criar servidor** ou **Tenho um convite**.
@@ -144,7 +152,7 @@ Esse comando usa `DATA_DIR` do ambiente e cria `backup-<timestamp>.sqlite` por `
 
 ## Limites concretos
 
-- **Não há equivalência total com Discord.** Não inclui bots, videochamada por câmera, anexos de chat, busca global, threads, categorias editáveis, eventos, notificações push, contagem de não lidas, banimentos, bloqueio de DMs, cargos personalizados, permissões por canal ou transferência de propriedade.
+- **Não há equivalência total com Discord.** Não inclui bots, videochamada por câmera, busca global, threads, categorias editáveis, eventos, notificações push, contagem de não lidas, banimentos, bloqueio de DMs, cargos personalizados, permissões por canal ou transferência de propriedade.
 - Cargos são quatro níveis fixos. DMs têm envio/leitura e paginação; edição, reações e fixação são funcionalidades dos canais, não das DMs.
 - O modelo de conta é uma **chave privada do navegador**, não login com e-mail/senha, 2FA ou recuperação por e-mail. Perder a chave e limpar o navegador pode tornar a identidade inacessível. Guarde a chave com cuidado.
 - DMs só são acessíveis enquanto há um servidor em comum. Os registros continuam no banco ao deixar/excluir servidores, mas deixam de ser expostos quando não existe associação em comum. O administrador da hospedagem tem acesso ao banco; não há criptografia ponta a ponta para o chat.

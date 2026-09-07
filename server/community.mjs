@@ -16,7 +16,9 @@ export function authenticate(req){
 export function member(group,key){const m=one('SELECT * FROM group_members WHERE group_id=? AND user_key=?',group,key);if(!m)fail('Você não faz parte deste servidor.',403);return m}
 const clean=(v,max=40)=>String(v||'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,max);
 function name(v){const n=clean(v);if(n.length<2)fail('Use um nome com pelo menos 2 caracteres.');return n}
-function message(v){const m=String(v||'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim();if(!m||m.length>2000)fail('A mensagem deve ter entre 1 e 2000 caracteres.');return m}
+function message(v,allowEmpty=false){const m=String(v||'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim();if((!m&&!allowEmpty)||m.length>2000)fail(allowEmpty?'A mensagem pode ter até 2000 caracteres.':'A mensagem deve ter entre 1 e 2000 caracteres.');return m}
+function attachment(id,key){if(!id)return null;const a=one('SELECT * FROM attachments WHERE id=? AND user_key=? AND used=0',String(id),key);if(!a)fail('O anexo não foi encontrado ou já foi enviado.');return a}
+const mediaFields=m=>({attachmentId:m.attachment_id||'',attachmentName:m.attachment_name||'',attachmentType:m.attachment_type||'',attachmentSize:Number(m.attachment_size)||0,attachmentUrl:m.attachment_id?'/api/attachment/'+m.attachment_id:''});
 function transaction(fn){sqlite.exec('BEGIN IMMEDIATE');try{const r=fn();sqlite.exec('COMMIT');return r}catch(e){sqlite.exec('ROLLBACK');throw e}}
 const buckets=new Map();
 function throttle(key,max=120){const now=Date.now(),b=buckets.get(key);if(!b||now-b.start>60000){buckets.set(key,{start:now,n:1});return}if(++b.n>max)fail('Muitas ações. Aguarde um minuto.',429)}
@@ -88,13 +90,13 @@ export async function COMMUNITY(req){try{
   run('UPDATE group_members SET name=? WHERE user_key=?',name(b.name).slice(0,30),key);
  }
  else if(action==='message'){
-  channel();const text=message(b.message);const reply=Number(b.replyId)||null;
+  channel();const a=attachment(b.attachmentId,key),text=message(b.message,!!a),reply=Number(b.replyId)||null;
   if(reply&&!one('SELECT id FROM channel_messages WHERE id=? AND channel_id=?',reply,cid))fail('Resposta fora deste canal.');
-  run('INSERT OR IGNORE INTO channel_messages(channel_id,user_key,name,body,created,reply_id,nonce) VALUES(?,?,?,?,?,?,?)',cid,key,u.name,text,now,reply,clean(b.nonce,80)||randomUUID());run('DELETE FROM typing WHERE channel_id=? AND user_key=?',cid,key);
+  transaction(()=>{const r=run('INSERT OR IGNORE INTO channel_messages(channel_id,user_key,name,body,created,reply_id,nonce,attachment_id,attachment_name,attachment_type,attachment_size) VALUES(?,?,?,?,?,?,?,?,?,?,?)',cid,key,u.name,text,now,reply,clean(b.nonce,80)||randomUUID(),a?.id||null,a?.name||'',a?.mime||'',a?.size||0);if(a&&Number(r.changes))run('UPDATE attachments SET used=1 WHERE id=?',a.id)});run('DELETE FROM typing WHERE channel_id=? AND user_key=?',cid,key);
  }
  else if(['editMessage','deleteMessage','react','pin'].includes(action)){
   channel();const m=one('SELECT * FROM channel_messages WHERE id=? AND channel_id=?',Number(b.messageId)||0,cid);if(!m)fail('Mensagem não encontrada.',404);
-  if(action==='editMessage'){if(m.user_key!==key)fail('Você só pode editar suas mensagens.',403);run('UPDATE channel_messages SET body=?,edited=? WHERE id=?',message(b.message),now,m.id)}
+  if(action==='editMessage'){if(m.user_key!==key)fail('Você só pode editar suas mensagens.',403);run('UPDATE channel_messages SET body=?,edited=? WHERE id=?',message(b.message,!!m.attachment_id),now,m.id)}
   if(action==='deleteMessage'){if(m.user_key!==key)moderator();transaction(()=>{run('DELETE FROM reactions WHERE message_id=?',m.id);run('UPDATE channel_messages SET reply_id=NULL WHERE reply_id=?',m.id);run('DELETE FROM channel_messages WHERE id=?',m.id)})}
   if(action==='pin'){moderator();run('UPDATE channel_messages SET pinned=? WHERE id=?',m.pinned?0:1,m.id)}
   if(action==='react'){
@@ -106,7 +108,7 @@ export async function COMMUNITY(req){try{
  else if(action==='typing'){channel();run('INSERT OR REPLACE INTO typing VALUES(?,?,?)',cid,key,now)}
  else if(action==='dmSend'){
   const target=String(b.target||'');if(target===key||!one('SELECT 1 FROM group_members a JOIN group_members b ON a.group_id=b.group_id WHERE a.user_key=? AND b.user_key=?',key,target))fail('A DM exige um servidor em comum.',403);
-  run('INSERT OR IGNORE INTO direct_messages(sender,recipient,body,created,nonce) VALUES(?,?,?,?,?)',key,target,message(b.message),now,clean(b.nonce,80)||randomUUID());
+  const a=attachment(b.attachmentId,key),text=message(b.message,!!a);transaction(()=>{const r=run('INSERT OR IGNORE INTO direct_messages(sender,recipient,body,created,nonce,attachment_id,attachment_name,attachment_type,attachment_size) VALUES(?,?,?,?,?,?,?,?,?)',key,target,text,now,clean(b.nonce,80)||randomUUID(),a?.id||null,a?.name||'',a?.mime||'',a?.size||0);if(a&&Number(r.changes))run('UPDATE attachments SET used=1 WHERE id=?',a.id)});
  }
  else if(action!=='poll')fail('Ação desconhecida.');
  const groups=all(`SELECT g.id,g.name,g.space,g.invite_code inviteCode,m.role,(SELECT count(*) FROM group_members WHERE group_id=g.id) memberCount FROM groups g JOIN group_members m ON m.group_id=g.id WHERE m.user_key=? ORDER BY g.created`,key);
@@ -116,14 +118,14 @@ export async function COMMUNITY(req){try{
  const members=gid?all(`SELECT m.user_key userKey,COALESCE(p.name,m.name) name,m.role,COALESCE(p.avatar,'') avatar,COALESCE(p.status,'') status,CASE WHEN p.seen>? THEN p.presence ELSE 'offline' END presence FROM group_members m LEFT JOIN profiles p ON p.user_key=m.user_key WHERE m.group_id=? ORDER BY m.joined`,now-35000,gid):[];
  const before=Math.max(0,Number(b.before)||0);
  const rows=cid?all(`SELECT * FROM channel_messages WHERE channel_id=? AND (?=0 OR id<?) ORDER BY id DESC LIMIT 80`,cid,before,before).reverse():[];
- function decorate(m){const {user_key,...safe}=m;return {...safe,userKey:publicId(user_key),reply:m.reply_id?one('SELECT name,body FROM channel_messages WHERE id=? AND channel_id=?',m.reply_id,cid)||null:null,reactions:all('SELECT emoji,count(*) count,max(user_key=?) mine FROM reactions WHERE message_id=? GROUP BY emoji',key,m.id)}}
+ function decorate(m){const {user_key,...safe}=m;return {...safe,...mediaFields(m),userKey:publicId(user_key),reply:m.reply_id?one('SELECT name,body,attachment_name attachmentName FROM channel_messages WHERE id=? AND channel_id=?',m.reply_id,cid)||null:null,reactions:all('SELECT emoji,count(*) count,max(user_key=?) mine FROM reactions WHERE message_id=? GROUP BY emoji',key,m.id)}}
  const pinned=cid?all('SELECT * FROM channel_messages WHERE channel_id=? AND pinned=1 ORDER BY id DESC LIMIT 100',cid).map(decorate):[];
  const typing=cid?all('SELECT p.name FROM typing t JOIN profiles p ON p.user_key=t.user_key WHERE t.channel_id=? AND t.seen>? AND t.user_key<>?',cid,now-5000,key):[];
  const target=String(b.dmTarget||b.target||'');let dms=[];
  const dmAllowed=target!==key&&!!one('SELECT 1 FROM group_members a JOIN group_members b ON a.group_id=b.group_id WHERE a.user_key=? AND b.user_key=?',key,target);
  if(target&&dmAllowed)dms=all('SELECT * FROM direct_messages WHERE ((sender=? AND recipient=?) OR (sender=? AND recipient=?)) AND (?=0 OR id<?) ORDER BY id DESC LIMIT 80',key,target,target,key,before,before).reverse();
  const me=one('SELECT user_key userKey,name,avatar,status,presence FROM profiles WHERE user_key=?',key);
- members.forEach(m=>m.userKey=publicId(m.userKey));me.userKey=publicId(me.userKey);dms=dms.map(m=>({...m,sender:publicId(m.sender),recipient:publicId(m.recipient)}));
+ members.forEach(m=>m.userKey=publicId(m.userKey));me.userKey=publicId(me.userKey);dms=dms.map(m=>({...m,...mediaFields(m),sender:publicId(m.sender),recipient:publicId(m.recipient)}));
  return Response.json({groups,channels,members,messages:rows.map(decorate),pinned,typing,dms,dmAllowed,me,activeGroupId:gid,activeChannelId:cid,hasOlder:rows.length===80},{headers:{'Cache-Control':'no-store'}});
  }catch(e){if(!e.status)console.error('Community:',e);return Response.json({error:e.status?e.message:'Não foi possível concluir a ação.'},{status:e.status||500})}}
 
