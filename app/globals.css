@@ -29,3 +29,16 @@ h1{letter-spacing:-.055em;font-weight:750}h1 span{text-shadow:0 0 28px #ff405780
 @keyframes live-glow{0%,100%{box-shadow:0 0 0 4px #ff405710}50%{box-shadow:0 0 0 7px #ff405704}}
 @media(max-width:500px){.people-grid{grid-template-columns:1fr}.call-controls{gap:7px;padding:9px}.call-controls button{padding:0 12px}.call-controls button.share{padding:0 10px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Interactive liquid-red background. */
+.workspace{position:relative;overflow:hidden}
+.liquid-fx-canvas{position:absolute;inset:0;z-index:0;width:100%;height:100%;pointer-events:none;opacity:.9;mix-blend-mode:screen}
+.workspace>header,.workspace>.room{position:relative;z-index:1}
+.room{background:linear-gradient(180deg,#0b0b0ea8 0%,#0b0b0e72 48%,#0b0b0e96 100%)}
+@media(max-width:800px){.liquid-fx-canvas{opacity:.72}}
+@media(prefers-reduced-motion:reduce){.liquid-fx-canvas{opacity:.45}}
+
+/* Small tactile click animation on every button without overriding hover transforms. */
+button{transition:background .18s,transform .18s,scale .12s,filter .18s}
+button:active:not(:disabled){scale:.96}
+@media(prefers-reduced-motion:reduce){button:active:not(:disabled){scale:1}}
