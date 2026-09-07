@@ -12,3 +12,7 @@ export function bootstrap(){
  return true;
  })().catch(e=>{boot=null;throw e});return boot;
 }
+export function clearLocalIdentity(){
+ ['tatico-credential','voz-user-key','voz-name','voz-avatar'].forEach(key=>localStorage.removeItem(key));
+}
+
