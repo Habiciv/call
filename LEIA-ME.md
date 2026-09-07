@@ -98,3 +98,8 @@ O teste cobre health check, capacidade da sala, autenticação por token, sinali
 - Separa de forma explícita voz, vídeo da tela e áudio da tela por receptor WebRTC.
 - A transmissão só aparece no palco de compartilhamento e some quando a faixa de tela é silenciada/encerrada.
 - Mantém TURN, reconexão e canais da versão anterior.
+
+
+## Correção de transmissão fantasma
+
+O indicador **AO VIVO** agora depende somente do evento explícito de compartilhamento de tela. O transceiver WebRTC de vídeo reservado não ativa mais uma transmissão sozinho.

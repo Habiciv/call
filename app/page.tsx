@@ -103,7 +103,7 @@ function Media({stream,local=false,forceVideo=false,audioMuted=false,sensitivity
   return <>
     <audio ref={audioRef} className="remote-audio" autoPlay={!local} preload="auto"/>
     {onSpeaking&&<SpeakingSensor stream={stream} enabled={!local} sensitivity={sensitivity} onChange={onSpeaking}/>} 
-    {hasVideo&&<video ref={videoRef} autoPlay playsInline muted controls className="screen-video"/>}
+    {hasVideo&&<video ref={videoRef} autoPlay playsInline muted className="screen-video"/>}
     {blocked&&<button type="button" className="enable-audio" onClick={()=>{if(audioRef.current)void audioRef.current.play().then(()=>setBlocked(false)).catch(()=>{});}}><Volume2 size={15}/> Ativar áudio</button>}
   </>;
 }

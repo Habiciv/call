@@ -260,23 +260,18 @@ export function useCall(channel:string){
    const isScreen=role!=='voice';
    putTrack(isScreen?setScreenStreams:setStreams,id,e.track);
    if(role==='screen-video'){
-    let muteTimer:ReturnType<typeof setTimeout>|undefined;
-    const active=()=>{
-     if(muteTimer){clearTimeout(muteTimer);muteTimer=undefined}
-     setRemoteSharing(old=>old[id]?old:{...old,[id]:true});
-    };
-    const inactive=()=>{
-     if(muteTimer)clearTimeout(muteTimer);
-     muteTimer=setTimeout(()=>{
-      if(e.track.muted||e.track.readyState!=='live')setRemoteSharing(old=>old[id]===false?old:{...old,[id]:false});
-     },1200);
-    };
-    const ended=()=>{
-     if(muteTimer)clearTimeout(muteTimer);
+    // IMPORTANTE: um transceiver de vídeo reservado pode disparar `ontrack`/
+    // `unmute` mesmo sem existir compartilhamento de tela. Por isso a faixa
+    // WebRTC, sozinha, NUNCA deve ligar o estado "AO VIVO". O estado de
+    // transmissão é controlado exclusivamente pela mensagem `media.sharing`
+    // enviada quando a pessoa aperta/parar o botão Transmitir.
+    //
+    // `ended` ainda pode desligar uma transmissão verdadeira caso a conexão
+    // seja encerrada de forma abrupta.
+    e.track.addEventListener('ended',()=>{
      setRemoteSharing(old=>old[id]===false?old:{...old,[id]:false});
-    };
-    e.track.addEventListener('unmute',active);e.track.addEventListener('mute',inactive);e.track.addEventListener('ended',ended);
-    if(!e.track.muted&&e.track.readyState==='live')queueMicrotask(active);
+     setRemoteShareAudio(old=>old[id]===false?old:{...old,[id]:false});
+    });
    }
    e.track.addEventListener('ended',()=>{
     const setter=isScreen?setScreenStreams:setStreams;
@@ -323,7 +318,13 @@ export function useCall(channel:string){
   if(!ids.has(signal.sender))return true;
   let data:any;try{data=JSON.parse(signal.data)}catch{return true}
   if(data.media){
-   const active=Boolean(data.media.sharing);setRemoteSharing(old=>old[signal.sender]===active?old:{...old,[signal.sender]:active});setRemoteShareAudio(old=>old[signal.sender]===Boolean(data.media.shareAudio)?old:{...old,[signal.sender]:Boolean(data.media.shareAudio)});return true;
+   // A sinalização explícita é a única fonte de verdade para mostrar o painel
+   // de transmissão. Isso evita "AO VIVO" fantasma causado pelo transceiver
+   // de vídeo que já existe desde o início da call.
+   const active=Boolean(data.media.sharing),hasAudio=active&&Boolean(data.media.shareAudio);
+   setRemoteSharing(old=>old[signal.sender]===active?old:{...old,[signal.sender]:active});
+   setRemoteShareAudio(old=>old[signal.sender]===hasAudio?old:{...old,[signal.sender]:hasAudio});
+   return true;
   }
   if(data.control?.type==='repair'){
    if(isInitiator(signal.sender,s)){const p=connection(signal.sender,s);if(p)void ensureOffer(signal.sender,s,true)}
