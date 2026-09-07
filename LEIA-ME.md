@@ -1,82 +1,74 @@
-# Voz — versão perfil + estabilidade
+# Voz — áudio e transmissão corrigidos
 
-Projeto pronto para publicar no Railway, com chamadas WebRTC, indicador de fala, controles de volume, foto de perfil e compartilhamento de tela.
+Versão preparada para Railway com chamada WebRTC em malha, TURN, foto de perfil, indicador de fala, volumes e compartilhamento de tela.
 
-## Publicar no Railway
+## O que mudou nesta versão
 
-1. Extraia o ZIP.
-2. Envie **o conteúdo de `voz-railway-perfil-fix/`** para a raiz do seu repositório GitHub. Não crie outra pasta por fora no repositório.
-3. No Railway, publique esse repositório. O `Dockerfile` faz o build automaticamente; não é necessário enviar `dist/`.
-4. Adicione um Volume no serviço montado em **`/data`**.
-5. Mantenha **1 réplica** do serviço, porque a presença/sinalização usa SQLite no volume.
-6. Em Networking, gere um domínio público. O servidor usa `PORT` do Railway e tem `/health` configurado.
+- Conexão de áudio entre cada par de participantes agora tem estado próprio e recuperação automática.
+- Se uma oferta WebRTC ou a resposta se perder, o cliente reenvia a negociação em vez de ficar preso para sempre em `have-local-offer`.
+- ICE é reiniciado automaticamente quando uma conexão fica presa, desconecta ou falha.
+- O participante que não é o iniciador pode pedir ao outro lado para refazer a conexão.
+- O microfone tenta se recuperar se o dispositivo for desconectado/trocado durante a call.
+- A captura de microfone tem fallback para dispositivos que rejeitam constraints avançadas.
+- Opus é priorizado para voz.
+- Áudio recebe prioridade maior que compartilhamento de tela para evitar voz cortando durante uma transmissão.
+- O compartilhamento de tela usa transceivers pré-negociados e `replaceTrack`, evitando renegociações de SDP que podiam quebrar o áudio ou impedir a tela de aparecer.
+- A transmissão reduz FPS/resolução/bitrate conforme entra mais gente para preservar a subida de internet.
+- Cada pessoa mostra `Áudio conectado`, `Conectando áudio` ou `Reconectando áudio`.
+- Há um botão **Reconectar áudio** nas configurações para forçar uma recuperação sem sair da sala.
+- O navegador tenta liberar o áudio remoto no clique de entrada e novamente em qualquer interação caso autoplay tenha sido bloqueado.
 
-## TURN — importante para áudio entre redes diferentes
+## TURN no Railway
 
-STUN está configurado por padrão, mas algumas redes móveis, escolares, empresariais ou com CGNAT bloqueiam WebRTC direto. Para a call funcionar com muito mais confiabilidade entre qualquer rede, configure no Railway:
+Use estas variáveis no serviço:
 
-- `TURN_URL`
-- `TURN_USERNAME`
-- `TURN_CREDENTIAL`
-
-`TURN_URL` pode conter mais de uma URL separada por vírgula, por exemplo UDP e TCP. Use credenciais do seu provedor TURN e nunca coloque a senha no GitHub.
-
-## O que foi melhorado nesta versão
-
-- Foto de perfil JPG/PNG/WebP com corte quadrado e compressão automática no navegador.
-- A própria foto fica salva localmente no navegador; durante a call ela é compartilhada com os participantes da sala.
-- Fotos não vão junto em todo `poll`: os clientes baixam a imagem somente quando o perfil muda, evitando gastar banda da chamada.
-- Atualização de foto em tempo real quando você troca a imagem durante a call.
-- Migração automática do banco SQLite existente no Railway para as novas colunas de perfil, sem precisar apagar o volume.
-- Áudio de voz e áudio da transmissão agora ficam em streams separados. Isso impede o som da tela de marcar a pessoa como “Falando”.
-- Transmissões remotas aparecem em uma área própria, em vez de ficarem misturadas dentro do card de voz.
-- O estado da transmissão é avisado explicitamente aos outros participantes; a tela não some só porque uma trilha ficou `mute` por um instante.
-- Ao iniciar/parar a tela, o WebRTC faz uma renegociação curta de compatibilidade depois do `replaceTrack`, corrigindo casos em que a transmissão local aparecia mas os outros não recebiam o vídeo.
-- Quem entra depois de a transmissão já ter começado também recebe o estado atual da tela.
-- Volume individual por participante, volume geral das vozes e volume separado para áudio das transmissões.
-- Compartilhamento de tela adapta bitrate, resolução e FPS conforme o número de participantes para proteger o áudio.
-- Reconexão de ICE e tentativas de recuperar pequenos cortes temporários do Railway antes de derrubar a call.
-- Validação mais forte de ações, IDs, nomes e fotos no servidor.
-- Foto é limitada e aceita somente JPEG/PNG/WebP convertido para JPEG no cliente; SVG não é aceito como avatar.
-
-## Compartilhar tela com áudio
-
-Ao escolher uma aba/tela no Chrome ou Edge, marque **Compartilhar áudio** quando a opção estiver disponível. Nem todo tipo de captura ou sistema operacional oferece áudio do sistema.
-
-Os presets são:
-
-- **Estável:** 540p / 15 FPS
-- **Equilibrada:** 720p / 20 FPS
-- **Nítida:** até 1080p / 30 FPS
-
-Como a chamada atual é do tipo **mesh**, quem transmite envia uma cópia para cada participante. Com muita gente, a aplicação reduz automaticamente a carga de vídeo. Para salas grandes com vídeo pesado, a arquitetura ideal no futuro é usar um SFU (por exemplo LiveKit/mediasoup), em vez de mesh.
-
-## Rodar localmente
-
-Requer Node.js 24 e pnpm:
-
-```sh
-pnpm install --frozen-lockfile
-pnpm build
-pnpm start
+```text
+TURN_URL=turn:global.relay.metered.ca:80
+TURN_USERNAME=SEU_USERNAME
+TURN_CREDENTIAL=SUA_CREDENTIAL
 ```
 
-Depois abra `http://localhost:8080`.
+Se `TURN_URL` for a rota global da Metered em `:80`, o servidor desta versão adiciona automaticamente as rotas de fallback:
 
-Testes do servidor:
+```text
+turn:global.relay.metered.ca:80
+turn:global.relay.metered.ca:80?transport=tcp
+turn:global.relay.metered.ca:443
+turns:global.relay.metered.ca:443?transport=tcp
+```
+
+Também é possível definir `TURN_URLS` com várias URLs separadas por vírgula ou linha. Não coloque usuário/senha TURN no GitHub; mantenha somente nas Variables do Railway.
+
+Depois de alterar Variables, faça um **Redeploy**.
+
+## Publicar
+
+1. Extraia o ZIP.
+2. Envie **o conteúdo da pasta** para a raiz do repositório GitHub.
+3. Não envie outra cópia do projeto dentro de uma subpasta.
+4. No Railway, mantenha `Dockerfile` como builder.
+5. Monte um Volume em `/data`.
+6. Mantenha 1 réplica, pois a presença/sinalização usa SQLite local.
+7. Gere um domínio público HTTPS.
+
+O Dockerfile faz o build do `dist` automaticamente; não é preciso enviar a pasta `dist`.
+
+## Compartilhamento de tela
+
+Presets:
+
+- **Estável:** 540p / 12 FPS
+- **Equilibrada:** 720p / 15 FPS
+- **Nítida:** até 1080p / 24 FPS
+
+Para transmitir o som de uma aba no Chrome/Edge, marque **Compartilhar áudio** na janela de seleção.
+
+Como a sala é mesh, quem compartilha tela envia uma cópia para cada pessoa. Com várias pessoas, a aplicação diminui automaticamente a carga do vídeo para proteger a voz. Para salas grandes com vídeo constante, a evolução ideal é um SFU.
+
+## Testes
 
 ```sh
 pnpm test
 ```
 
-## Verificações feitas
-
-- Sintaxe/transpilação dos arquivos TypeScript/TSX alterados.
-- Inicialização do servidor e endpoint `/health`.
-- Entrada de participantes e limite de 10 pessoas.
-- Proteção por token.
-- Sinalização entre participantes, incluindo estado de compartilhamento de tela.
-- Envio, leitura, atualização e remoção de foto de perfil.
-- Migração de schema preservando bancos existentes.
-
-A qualidade real de WebRTC ainda depende de navegador, upload de cada usuário e da presença de TURN nas redes que exigem relay.
+O teste do servidor cobre health check, capacidade da sala, autenticação por token, sinalização, avatar/perfil e expansão das rotas TURN da Metered.

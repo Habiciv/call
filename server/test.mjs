@@ -8,9 +8,10 @@ import {join} from 'node:path';
 
 test('health, capacity, signaling, profile/avatar, and participant token',async()=>{
  const data=await mkdtemp(join(tmpdir(),'voz-test-')),port=String(18000+Math.floor(Math.random()*10000)),origin='http://localhost:'+port;
- const child=spawn(process.execPath,['server/index.mjs'],{cwd:fileURLToPath(new URL('../',import.meta.url)),env:{...process.env,PORT:port,DATA_DIR:data},stdio:'ignore'});
+ const child=spawn(process.execPath,['server/index.mjs'],{cwd:fileURLToPath(new URL('../',import.meta.url)),env:{...process.env,PORT:port,DATA_DIR:data,TURN_URL:'turn:global.relay.metered.ca:80',TURN_USERNAME:'test-user',TURN_CREDENTIAL:'test-pass'},stdio:'ignore'});
  try{
   let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(origin+'/health')).ok;if(ready)break}catch{}await new Promise(r=>setTimeout(r,100))}assert.ok(ready,'server startup');
+  const cfg=await (await fetch(origin+'/api/config')).json();assert.equal(cfg.turnConfigured,true);assert.ok(cfg.turnUrls.includes('turn:global.relay.metered.ca:80?transport=tcp'));assert.ok(cfg.turnUrls.includes('turns:global.relay.metered.ca:443?transport=tcp'));
   const room=crypto.randomUUID()+'-Lounge',people=Array.from({length:11},()=>({room,id:crypto.randomUUID(),token:crypto.randomUUID()}));
   async function call(p,action,extra={}){const r=await fetch(origin+'/api/room',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({...p,action,...extra})});return {status:r.status,data:await r.json()}}
   const avatar='data:image/jpeg;base64,'+Buffer.from('avatar-test').toString('base64');

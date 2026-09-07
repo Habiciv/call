@@ -83,3 +83,14 @@ button:active:not(:disabled){scale:.96}
 .screen-loading{min-height:180px;border-radius:8px;background:#070708;display:flex;align-items:center;justify-content:center;gap:10px;color:#a9adb6;font-size:12px;border:1px solid #ffffff0a}
 .screen-loading span{width:8px;height:8px;border-radius:50%;background:#ff4057;box-shadow:0 0 0 5px #ff405714;animation:live-glow 1.4s ease-in-out infinite}
 @media(prefers-reduced-motion:reduce){.screen-loading span{animation:none}}
+
+/* Connection recovery + TURN status. */
+.connection-tools{display:flex;align-items:stretch;justify-content:space-between;gap:10px;padding-top:13px;border-top:1px solid #312027}
+.connection-tools>div{min-width:0;display:flex;flex:1;flex-direction:column;gap:3px;padding:10px 11px;border-radius:9px;border:1px solid #343039;background:#171419}
+.connection-tools strong{font-size:11px;letter-spacing:.2px}.connection-tools small{font-size:10px;line-height:1.45;color:#8f96a1}
+.turn-ok strong{color:#9ee7b3}.turn-warn strong{color:#f0c985}
+.repair-audio{min-height:44px;padding:0 14px;border-radius:9px;border:1px solid #5d2b39;background:#25141b;color:#f4dbe0;display:inline-flex;align-items:center;justify-content:center;gap:7px;font-size:11px;font-weight:800;white-space:nowrap}
+.repair-audio:hover{border-color:#a9425b;background:#321821}
+@media(max-width:600px){.connection-tools{flex-direction:column}.repair-audio{width:100%}}
+.peer-connection{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px;font-size:9px;color:#8e949e;letter-spacing:.2px}.peer-connection>span{width:6px;height:6px;border-radius:50%;background:#7d838d}.peer-connection.connected{color:#91d6a5}.peer-connection.connected>span{background:#56c678;box-shadow:0 0 0 4px #56c67812}.peer-connection.reconnecting{color:#e7c487}.peer-connection.reconnecting>span{background:#d7a94f}.peer-connection.failed{color:#ff8798}.peer-connection.failed>span{background:#ff4057}.peer-connection.connecting>span,.peer-connection.new>span{animation:live-glow 1.4s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.peer-connection.connecting>span,.peer-connection.new>span{animation:none}}
