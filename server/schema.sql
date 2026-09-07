@@ -3,6 +3,8 @@ CREATE TABLE `peers` (
 	`room` text NOT NULL,
 	`token` text NOT NULL,
 	`name` text NOT NULL,
+	`avatar` text NOT NULL DEFAULT '',
+	`profile_version` integer NOT NULL DEFAULT 0,
 	`seen` integer NOT NULL
 );
 --> statement-breakpoint

@@ -66,3 +66,20 @@ button:active:not(:disabled){scale:.96}
 .screen-wrap>div span{white-space:nowrap}
 @media(max-width:600px){.audio-panel{padding:14px}.quality-options{grid-template-columns:1fr}.quality-options button{min-height:46px}.segmented{gap:5px}.call-controls .control-label{display:none}.person-volume{margin-top:10px}}
 @media(prefers-reduced-motion:reduce){.person.speaking .avatar{animation:none}}
+
+/* Profile photos + cleaner remote screen sharing. */
+.visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.profile-photo-button{position:relative;width:40px;height:40px;flex:0 0 40px;border-radius:50%;padding:0;background:transparent;display:block}
+.profile-avatar,.join-avatar,.avatar{overflow:hidden}
+.profile-avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(140deg,#ba3452,#64192f);font-weight:800;color:#fff;border:2px solid #ffffff14}
+.profile-avatar img,.join-avatar img,.avatar img{width:100%;height:100%;display:block;object-fit:cover}
+.profile-camera{position:absolute;right:-2px;bottom:-2px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:#ff4057;color:#fff;border:2px solid #0b0b0e}
+.profile>div{min-width:0}.profile>div:first-of-type{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.profile-photo-button:hover .profile-camera{transform:scale(1.08)}
+.join-profile{display:flex;flex-direction:column;align-items:center;gap:9px;margin-bottom:8px}.join-photo-button{position:relative;width:92px;height:92px;border-radius:50%;padding:0;background:transparent}.join-avatar{width:92px;height:92px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(140deg,#ba3452,#64192f);border:3px solid #ff405735;box-shadow:0 0 0 8px #ff405709;color:#fff;font-size:28px;font-weight:800}.join-photo-button>span{position:absolute;right:1px;bottom:2px;width:29px;height:29px;border-radius:50%;background:#ff4057;color:#fff;border:3px solid #160d11;display:grid;place-items:center}.join-photo-actions{display:flex;align-items:center;gap:10px}.join-photo-actions button{font-size:11px;color:#ff9baa}.join-photo-actions .remove-photo{color:#9aa0aa;display:flex;align-items:center;gap:5px}.profile-message{max-width:680px;padding:10px 13px;margin-top:14px;border:1px solid #4c3a28;background:#211a11;color:#e6cba2;border-radius:8px;font-size:12px;line-height:1.45}
+.avatar{position:relative}.avatar>span{display:grid;width:100%;height:100%;place-items:center}.person.speaking .avatar img{transform:scale(1.02)}
+.remote-screens{display:grid;grid-template-columns:1fr;gap:14px;margin-top:20px}.remote-screen{margin-top:0;background:#0e0b0d;border-color:#5f2e3c}.remote-screen>div strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.remote-screen .screen-video,.screen-wrap .screen-video{max-height:min(68svh,720px);object-fit:contain;background:#050506}.remote-screen .enable-audio{margin:10px 0 0!important}.screen-wrap{overflow:hidden}.screen-wrap>div{min-width:0}
+.setting-row+ .setting-row{border-top:1px solid #312027}
+@media(max-width:600px){.join-avatar,.join-photo-button{width:78px;height:78px}.join-avatar{font-size:24px}.profile-message{font-size:11px}.remote-screen .screen-video,.screen-wrap .screen-video{max-height:420px}}
+.screen-loading{min-height:180px;border-radius:8px;background:#070708;display:flex;align-items:center;justify-content:center;gap:10px;color:#a9adb6;font-size:12px;border:1px solid #ffffff0a}
+.screen-loading span{width:8px;height:8px;border-radius:50%;background:#ff4057;box-shadow:0 0 0 5px #ff405714;animation:live-glow 1.4s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.screen-loading span{animation:none}}
