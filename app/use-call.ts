@@ -1,4 +1,5 @@
 'use client';
+import {createOfferSlots,bindNegotiatedMedia,mediaSlots,trackRole} from './rtc-media';
 import { useEffect,useRef,useState,type Dispatch,type SetStateAction } from 'react';
 
 type Person={id:string;name:string;hasAvatar:number|boolean;avatarVersion:number};
@@ -182,13 +183,16 @@ export function useCall(channel:string,spaceOverride=""){
 
  async function sendOffer(id:string,s:Session,restart=false){
   const p=connections.current[id];
-  if(!p||session.current!==s||p.signalingState==='closed'||p.signalingState!=='stable'||offerLocks.current[id])return;
+  if(!p||p.getTransceivers().length<3||session.current!==s||p.signalingState==='closed'||p.signalingState!=='stable'||offerLocks.current[id])return;
   offerLocks.current[id]=true;
   try{
    if(screenAttachJobs.current[id]){
     try{await screenAttachJobs.current[id]}catch{}
    }
-   if(restart)try{p.restartIce()}catch{}
+   if(restart)try{
+    if(iceServers.current.some(server=>[server.urls].flat().some(url=>/^turns?:/i.test(url))))p.setConfiguration({...p.getConfiguration(),iceTransportPolicy:'relay'});
+    p.restartIce();
+   }catch{}
    const offer=await p.createOffer({iceRestart:restart});
    if(session.current!==s||p.signalingState!=='stable')return;
    await p.setLocalDescription(offer);
@@ -320,31 +324,26 @@ export function useCall(channel:string,spaceOverride=""){
   }catch{if(session.current===s)setError('O microfone foi desconectado. Verifique o dispositivo e permita o acesso novamente.')}finally{micRecovering.current=false}
  }
 
+ function rememberSlots(id:string,slots:ReturnType<typeof mediaSlots>){
+  if(slots.voice){preferOpus(slots.voice);voiceSenders.current[id]=slots.voice.sender;void tuneAudio(slots.voice.sender)}
+  if(slots.video){screenVideoSenders.current[id]=slots.video.sender;screenVideoReceivers.current[id]=slots.video.receiver}
+  if(slots.sharedAudio){preferOpus(slots.sharedAudio);screenAudioSenders.current[id]=slots.sharedAudio.sender;void tuneShareAudio(slots.sharedAudio.sender)}
+ }
  function connection(id:string,s:Session){
   if(connections.current[id])return connections.current[id];
   const p=new RTCPeerConnection({iceServers:iceServers.current,iceTransportPolicy:'all',bundlePolicy:'max-bundle',rtcpMuxPolicy:'require',iceCandidatePoolSize:8});connections.current[id]=p;setPeerState(id,'new');
-  const audioTrack=mic.current?.getAudioTracks()[0];
-  const voice=audioTrack?p.addTransceiver(audioTrack,{direction:'sendrecv'}):p.addTransceiver('audio',{direction:'sendrecv'});preferOpus(voice);voiceSenders.current[id]=voice.sender;if(audioTrack)void tuneAudio(voice.sender);
-  const video=p.addTransceiver('video',{direction:'sendrecv'});screenVideoSenders.current[id]=video.sender;screenVideoReceivers.current[id]=video.receiver;screenReady.current[id]=false;
-  const sharedAudio=p.addTransceiver('audio',{direction:'sendrecv'});preferOpus(sharedAudio);screenAudioSenders.current[id]=sharedAudio.sender;
-  if(display.current){
-   screenAttachJobs.current[id]=(async()=>{
-    try{await attachCurrentShareToPeer(id,s)}finally{delete screenAttachJobs.current[id]}
-   })();
+  if(isInitiator(id,s)){
+   const slots=createOfferSlots(p,mic.current);rememberSlots(id,slots);
+   screenAttachJobs.current[id]=bindNegotiatedMedia(p,mic.current,display.current).then(()=>{}).finally(()=>{delete screenAttachJobs.current[id]});
   }
-
   p.onicecandidate=e=>{if(e.candidate)void request('signal',{target:id,data:{candidate:e.candidate.toJSON()}},s).catch(e=>{if(session.current===s)setError(e.message)})};
   // Cada conexão possui 3 receptores: voz, vídeo da tela e áudio da tela.
   // Alguns navegadores não preservam a identidade JS de `event.transceiver`, então
   // comparar `e.transceiver === video` pode classificar a faixa de vídeo como voz.
   // Isso era o quadrado preto/carregando que aparecia dentro do card da pessoa.
-  const receiverIds={
-   voice:voice.receiver.track.id,
-   screenVideo:video.receiver.track.id,
-   screenAudio:sharedAudio.receiver.track.id,
-  };
   p.ontrack=e=>{
-   const role=e.track.kind==='video'||e.track.id===receiverIds.screenVideo?'screen-video':e.track.id===receiverIds.screenAudio?'screen-audio':'voice';
+   if(session.current!==s||connections.current[id]!==p)return;
+   const role=trackRole(p,e);
    const isScreen=role!=='voice';
    putTrack(isScreen?setScreenStreams:setStreams,id,e.track);
    if(role==='screen-video'){
@@ -385,7 +384,7 @@ export function useCall(channel:string,spaceOverride=""){
     if(session.current===s)setError(turnConfigured?'A conexão de áudio falhou e está tentando novamente pelo TURN…':'A conexão de áudio falhou. Configure o TURN no Railway para redes bloqueadas.');
    }
   };
-  if(display.current){
+  if(display.current&&isInitiator(id,s)){
    queueMicrotask(async()=>{
     if(session.current!==s||!display.current)return;
     try{
@@ -456,13 +455,18 @@ export function useCall(channel:string,spaceOverride=""){
     const polite=!isInitiator(signal.sender,s);
     if(collision&&!polite)return true;
     if(collision&&polite){try{await p.setLocalDescription({type:'rollback'} as RTCSessionDescriptionInit)}catch{}}
+    if(description.type==='answer'&&p.signalingState==='stable')return true;
     await p.setRemoteDescription(description);
+    if(description.type==='offer'){
+     const slots=await bindNegotiatedMedia(p,mic.current,display.current);rememberSlots(signal.sender,slots);
+    }
     const queued=pending.current[signal.sender]||[];pending.current[signal.sender]=[];
     for(const c of queued){try{await p.addIceCandidate(c)}catch{}}
     if(description.type==='offer'){
      await p.setLocalDescription(await p.createAnswer());
      await request('signal',{target:signal.sender,data:{description:p.localDescription}},s);
      setPeerState(signal.sender,'connecting');scheduleWatchdog(signal.sender,s);
+     if(display.current)await request('signal',{target:signal.sender,data:{media:{sharing:true,shareAudio:Boolean(display.current.getAudioTracks()[0])}}},s);
     }
     return true;
    }
@@ -629,6 +633,9 @@ export function useCall(channel:string,spaceOverride=""){
 
  return {people,streams,screenStreams,remoteSharing,remoteShareAudio,avatars,messages,joined,busy,error,muted,sharing,screen,localStream,shareAudio,shareQuality,peerStates,turnConfigured,inputDeviceId,voiceProcessing,space,join,leave,toggleMute,share,setShareQuality,invite,updateProfile,repairAudio,switchMicrophone,setVoiceProcessing,sendMessage,self:session.current?.id};
 }
+
+
+
 
 
 

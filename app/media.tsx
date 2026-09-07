@@ -1,3 +1,4 @@
+import {routeAudio} from './audio-output';
 import {useEffect,useRef,useState} from 'react';
 import {Volume2} from 'lucide-react';
 type Sensitivity='low'|'normal'|'high';
@@ -50,10 +51,13 @@ export function SpeakingSensor({stream,enabled=true,sensitivity='normal',onChang
 
 export function Media({stream,local=false,forceVideo=false,audioMuted=false,sensitivity='normal',outputDeviceId='',onSpeaking}:{stream:MediaStream;local?:boolean;forceVideo?:boolean;audioMuted?:boolean;sensitivity?:Sensitivity;outputDeviceId?:string;onSpeaking?:(value:boolean)=>void}){
   const audioRef=useRef<HTMLAudioElement>(null),videoRef=useRef<HTMLVideoElement>(null);
-  const [blocked,setBlocked]=useState(false),[hasVideo,setHasVideo]=useState(false);
+  const [blocked,setBlocked]=useState(false),[hasVideo,setHasVideo]=useState(false),[outputFallback,setOutputFallback]=useState(false);
 
   useEffect(()=>{
-    const update=()=>setHasVideo(forceVideo||stream.getVideoTracks().some(track=>track.readyState==='live'&&!track.muted));
+    const update=()=>{
+      setHasVideo(forceVideo||stream.getVideoTracks().some(track=>track.readyState==='live'&&!track.muted));
+      if(!local&&audioRef.current&&stream.getAudioTracks().some(t=>t.readyState==='live'))void audioRef.current.play().then(()=>setBlocked(false)).catch(()=>setBlocked(true));
+    };
     const bind=(track:MediaStreamTrack)=>{track.addEventListener('mute',update);track.addEventListener('unmute',update);track.addEventListener('ended',update);};
     const unbind=(track:MediaStreamTrack)=>{track.removeEventListener('mute',update);track.removeEventListener('unmute',update);track.removeEventListener('ended',update);};
     const add=(event:MediaStreamTrackEvent)=>{bind(event.track);update();},remove=(event:MediaStreamTrackEvent)=>{unbind(event.track);update();};
@@ -69,8 +73,9 @@ export function Media({stream,local=false,forceVideo=false,audioMuted=false,sens
 
   useEffect(()=>{
     if(local||!audioRef.current)return;
-    const element=audioRef.current as HTMLAudioElement&{setSinkId?:(id:string)=>Promise<void>};
-    if(typeof element.setSinkId==='function')void element.setSinkId(outputDeviceId||'').catch(()=>{});
+    let active=true;
+    void routeAudio(audioRef.current,outputDeviceId).then(fallback=>{if(active)setOutputFallback(fallback)}).catch(()=>{if(active)setBlocked(true)});
+    return()=>{active=false};
   },[outputDeviceId,local,stream]);
 
   useEffect(()=>{if(videoRef.current&&hasVideo){videoRef.current.srcObject=stream;void videoRef.current.play().catch(()=>{});}},[hasVideo,stream]);
@@ -78,14 +83,15 @@ export function Media({stream,local=false,forceVideo=false,audioMuted=false,sens
   useEffect(()=>{
     if(local)return;
     const retry=()=>{if(audioRef.current)void audioRef.current.play().then(()=>setBlocked(false)).catch(()=>{});};
-    window.addEventListener('pointerdown',retry,{passive:true});
-    return()=>window.removeEventListener('pointerdown',retry);
+    window.addEventListener('pointerdown',retry,{passive:true});window.addEventListener('keydown',retry);window.addEventListener('focus',retry);
+    return()=>{window.removeEventListener('pointerdown',retry);window.removeEventListener('keydown',retry);window.removeEventListener('focus',retry)};
   },[local]);
 
   return <>
     <audio ref={audioRef} className="remote-audio" autoPlay={!local} preload="auto"/>
     {onSpeaking&&<SpeakingSensor stream={stream} enabled={!local} sensitivity={sensitivity} onChange={onSpeaking}/>} 
     {hasVideo&&<video ref={videoRef} autoPlay playsInline muted className="screen-video"/>}
+    {outputFallback&&<span className="audio-fallback" role="status">Saída indisponível: usando o áudio padrão do sistema.</span>}
     {blocked&&<button type="button" className="enable-audio" onClick={()=>{if(audioRef.current)void audioRef.current.play().then(()=>setBlocked(false)).catch(()=>{});}}><Volume2 size={15}/> Ativar áudio</button>}
   </>;
 }
@@ -110,5 +116,6 @@ export async function avatarFromFile(file:File){
     throw Error('Essa foto ficou grande demais. Tente outra imagem.');
   }finally{URL.revokeObjectURL(url);}
 }
+
 
 

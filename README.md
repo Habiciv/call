@@ -2,6 +2,20 @@
 
 Aplicação de comunidades com identidade visual própria vermelho/preto, baseada na versão `voz-railway-grupos-bope.zip`. A organização da interface é inspirada em plataformas de comunidades, sem logos, brasões ou assets oficiais. Não é uma reprodução completa do Discord.
 
+## Atualização 0.2.1 — áudio e transmissão ampliada
+
+- Corrigida a associação do microfone de quem responde à chamada: agora são usadas as faixas oferecidas pelo outro participante, evitando faixas locais sem negociação e áudio em apenas um sentido.
+- Voz, vídeo da tela e áudio da tela são identificados pelos receptores/MIDs negociados. A renegociação da tela preserva a faixa do microfone.
+- Ao tentar recuperar uma conexão que falhou, o iniciador prioriza relay se houver TURN configurado. Isso não substitui credenciais TURN válidas e um serviço TURN acessível.
+- Reprodução de áudio é retomada ao chegar/desbloquear uma faixa, ao interagir com teclado/mouse e ao retornar à janela. Uma saída removida tenta o dispositivo padrão e mostra um aviso.
+- O painel de transmissão agora tem **Ampliar/Reduzir** e **Tela cheia**. Ampliar conserva os elementos de vídeo/áudio montados. Escape reduz a visualização ampliada; em tela cheia, Escape sai da tela cheia. Se o navegador recusar tela cheia, usa a ampliação dentro da página.
+
+**Atualizar:** substitua o código pelo novo ZIP e faça redeploy. Depois, todos devem sair da chamada, atualizar com Ctrl + F5 e entrar novamente. Não misture abas com a versão antiga e a nova. Não apague o volume nem altere as variáveis TURN já válidas. Não há mudança de esquema do banco nesta atualização.
+
+**Verificação:** nove testes automatizados passaram, além da checagem TypeScript e build Vite. Os novos testes de mídia usam objetos simulados para conferir negociação, três participantes, separação de voz/tela e saída de áudio; não são chamadas reais de navegador. Não houve validação de áudio em redes externas nem teste visual interativo da tela cheia.
+
+Referência técnica: [negociação WebRTC](https://www.w3.org/TR/webrtc/).
+
 ## Começar
 
 1. Abra o site e clique em **Criar servidor** ou **Tenho um convite**.
@@ -146,7 +160,7 @@ Esse comando usa `DATA_DIR` do ambiente e cria `backup-<timestamp>.sqlite` por `
 
 Executados com Node.js 24.19.0:
 
-- `node --test server/test.mjs server/community.test.mjs server/migration.test.mjs`: 4 testes de integração/migração passaram, com múltiplas verificações em cada cenário.
+- `node --test server/test.mjs server/community.test.mjs server/migration.test.mjs server/rtc-media.test.mjs`: 9 testes de integração/migração passaram, com múltiplas verificações em cada cenário.
 - `pnpm typecheck` (TypeScript sem emissão): aprovado.
 - `pnpm build`: build Vite de produção aprovado.
 - Endpoint local e compilação para prévia: respondendo.
@@ -169,3 +183,4 @@ Antes de disponibilizar para sua equipe, teste com duas contas/navegadores: conv
 - `Dockerfile`, `render.yaml`, `railway.json`: deploy.
 
 O ZIP não contém banco real, credenciais, dependências instaladas, diretórios de build ou cópias aninhadas do projeto. As dependências e o lockfile originais foram preservados. Nenhum serviço foi publicado automaticamente.
+
