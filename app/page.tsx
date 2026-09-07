@@ -4,7 +4,6 @@ import {useEffect,useRef,useState} from 'react';
 import {
   Headphones,
   Volume2,
-  Volume1,
   MonitorUp,
   Mic,
   MicOff,
@@ -67,7 +66,7 @@ function SpeakingSensor({stream,enabled=true,sensitivity='normal',onChange}:{str
   return null;
 }
 
-function Media({stream,local=false,forceVideo=false,volume=100,masterVolume=100,audioScale=100,sensitivity='normal',outputDeviceId='',onSpeaking}:{stream:MediaStream;local?:boolean;forceVideo?:boolean;volume?:number;masterVolume?:number;audioScale?:number;sensitivity?:Sensitivity;outputDeviceId?:string;onSpeaking?:(value:boolean)=>void}){
+function Media({stream,local=false,forceVideo=false,audioMuted=false,sensitivity='normal',outputDeviceId='',onSpeaking}:{stream:MediaStream;local?:boolean;forceVideo?:boolean;audioMuted?:boolean;sensitivity?:Sensitivity;outputDeviceId?:string;onSpeaking?:(value:boolean)=>void}){
   const audioRef=useRef<HTMLAudioElement>(null),videoRef=useRef<HTMLVideoElement>(null);
   const [blocked,setBlocked]=useState(false),[hasVideo,setHasVideo]=useState(false);
 
@@ -83,8 +82,8 @@ function Media({stream,local=false,forceVideo=false,volume=100,masterVolume=100,
   },[stream,local,forceVideo]);
 
   useEffect(()=>{
-    if(audioRef.current)audioRef.current.volume=Math.max(0,Math.min(1,(volume/100)*(masterVolume/100)*(audioScale/100)));
-  },[volume,masterVolume,audioScale]);
+    if(audioRef.current){audioRef.current.volume=1;audioRef.current.muted=audioMuted;}
+  },[audioMuted]);
 
   useEffect(()=>{
     if(local||!audioRef.current)return;
@@ -131,9 +130,9 @@ async function avatarFromFile(file:File){
 }
 
 const qualityInfo:Record<ShareQuality,{label:string;detail:string}>={
-  stable:{label:'Estável',detail:'540p · 12 FPS'},
-  balanced:{label:'Equilibrada',detail:'720p · 15 FPS'},
-  high:{label:'Nítida',detail:'1080p · 24 FPS'},
+  stable:{label:'Estável',detail:'360p · 20 FPS'},
+  balanced:{label:'Equilibrada',detail:'540p · 20 FPS'},
+  high:{label:'Nítida',detail:'720p · 24 FPS'},
 };
 
 const peerStateText={
@@ -150,9 +149,6 @@ export default function Home(){
   const [avatar,setAvatar]=useState('');
   const [profileMessage,setProfileMessage]=useState('');
   const [profileBusy,setProfileBusy]=useState(false);
-  const [masterVolume,setMasterVolume]=useState(90);
-  const [screenVolume,setScreenVolume]=useState(75);
-  const [volumes,setVolumes]=useState<Record<string,number>>({});
   const [speaking,setSpeaking]=useState<Record<string,boolean>>({});
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [settingsTab,setSettingsTab]=useState<SettingsTab>('audio');
@@ -172,8 +168,6 @@ export default function Home(){
     try{
       setName(localStorage.getItem('voz-name')||'');
       const saved=localStorage.getItem('voz-avatar')||'';if(saved.startsWith('data:image/'))setAvatar(saved);
-      const mv=Number(localStorage.getItem('voz-master-volume'));if(Number.isFinite(mv)&&mv>=0&&mv<=100)setMasterVolume(mv);
-      const sv=Number(localStorage.getItem('voz-screen-volume'));if(Number.isFinite(sv)&&sv>=0&&sv<=100)setScreenVolume(sv);
       const sens=localStorage.getItem('voz-sensitivity');if(sens==='low'||sens==='normal'||sens==='high')setSensitivity(sens);
       setOutputDeviceId(localStorage.getItem('voz-output-device')||'');
       setCompactMode(localStorage.getItem('voz-compact')==='1');
@@ -182,7 +176,7 @@ export default function Home(){
 
   useEffect(()=>{try{localStorage.setItem('voz-name',name);}catch{}},[name]);
   useEffect(()=>{try{if(avatar)localStorage.setItem('voz-avatar',avatar);else localStorage.removeItem('voz-avatar');}catch{}},[avatar]);
-  useEffect(()=>{try{localStorage.setItem('voz-master-volume',String(masterVolume));localStorage.setItem('voz-screen-volume',String(screenVolume));localStorage.setItem('voz-sensitivity',sensitivity);localStorage.setItem('voz-output-device',outputDeviceId);localStorage.setItem('voz-compact',compactMode?'1':'0');}catch{}},[masterVolume,screenVolume,sensitivity,outputDeviceId,compactMode]);
+  useEffect(()=>{try{localStorage.removeItem('voz-master-volume');localStorage.removeItem('voz-screen-volume');localStorage.setItem('voz-sensitivity',sensitivity);localStorage.setItem('voz-output-device',outputDeviceId);localStorage.setItem('voz-compact',compactMode?'1':'0');}catch{}},[sensitivity,outputDeviceId,compactMode]);
   useEffect(()=>{if(!call.joined)setDeafened(false);},[call.joined]);
   useEffect(()=>{if(!settingsOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setSettingsOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[settingsOpen]);
 
@@ -202,10 +196,8 @@ export default function Home(){
   },[call.joined]);
 
   const markSpeaking=(id:string,value:boolean)=>setSpeaking(old=>old[id]===value?old:{...old,[id]:value});
-  const personVolume=(id:string)=>volumes[id]??100;
   const remoteScreens=call.people.filter(person=>person.id!==call.self&&call.remoteSharing[person.id]);
   const filteredChannels=['Lounge','Jogatina','Foco'].filter(item=>item.toLowerCase().includes(channelSearch.toLowerCase()));
-  const effectiveMasterVolume=deafened?0:masterVolume;
   const supportsOutputSelection=typeof HTMLMediaElement!=='undefined'&&'setSinkId' in HTMLMediaElement.prototype;
 
   async function choosePhoto(file?:File){
@@ -326,7 +318,7 @@ export default function Home(){
           {(remoteScreens.length>0||call.screen)&&<div className={'share-stage '+((remoteScreens.length+(call.screen?1:0))>1?'multiple':'single')}>
             {remoteScreens.map(person=><div className="share-card" key={person.id}>
               <div className="share-card-head"><div><Avatar src={call.avatars[person.id]} name={person.name} className="share-avatar"/><strong>{person.name}</strong></div><span className="live-pill">AO VIVO</span></div>
-              {call.screenStreams[person.id]?<Media stream={call.screenStreams[person.id]} forceVideo volume={personVolume(person.id)} masterVolume={effectiveMasterVolume} audioScale={screenVolume} outputDeviceId={outputDeviceId}/>:<div className="screen-loading"><span/> Conectando transmissão…</div>}
+              {call.screenStreams[person.id]?<Media stream={call.screenStreams[person.id]} forceVideo audioMuted={deafened} outputDeviceId={outputDeviceId}/>:<div className="screen-loading"><span/> Conectando transmissão…</div>}
             </div>)}
             {call.screen&&<div className="share-card self-share"><div className="share-card-head"><div><MonitorUp size={17}/><strong>Sua transmissão</strong></div><span className="live-pill">{call.shareAudio?'TELA + ÁUDIO':'AO VIVO'}</span></div><Media stream={call.screen} local forceVideo/></div>}
           </div>}
@@ -339,7 +331,7 @@ export default function Home(){
                 <Avatar src={call.avatars[person.id]} name={person.name} className={'participant-avatar color-'+(index%6)}/>
                 <div className="participant-name"><strong>{person.name}</strong>{isSelf&&<span>você</span>}</div>
                 <div className="participant-state">{isSpeaking?<><AudioLines size={14}/> Falando</>:isSelf&&call.muted?<><MicOff size={14}/> Microfone desligado</>:<><Volume2 size={14}/> Na call</>}</div>
-                {call.streams[person.id]&&<Media stream={call.streams[person.id]} volume={personVolume(person.id)} masterVolume={effectiveMasterVolume} sensitivity={sensitivity} outputDeviceId={outputDeviceId} onSpeaking={isSelf?undefined:value=>markSpeaking(person.id,value)}/>} 
+                {call.streams[person.id]&&<Media stream={call.streams[person.id]} audioMuted={deafened} sensitivity={sensitivity} outputDeviceId={outputDeviceId} onSpeaking={isSelf?undefined:value=>markSpeaking(person.id,value)}/>} 
               </div>;
             })}
             {call.people.length===1&&<button type="button" className="invite-tile" onClick={call.invite}><Users size={28}/><strong>Convide alguém</strong><span>Copiar link da sala</span></button>}
@@ -364,7 +356,6 @@ export default function Home(){
           const isSelf=person.id===call.self,isSpeaking=Boolean(speaking[person.id])&&!(isSelf&&call.muted),peerState=isSelf?'connected':(call.peerStates[person.id]||'connecting');
           return <div className={'member-item '+(isSpeaking?'speaking':'')} key={person.id}>
             <div className="member-main"><div className="member-avatar-wrap"><Avatar src={call.avatars[person.id]} name={person.name} className="member-avatar"/><i className={isSpeaking?'speaking':'online'}/></div><div><strong>{person.name}{isSelf?' (você)':''}</strong><small>{isSpeaking?'Falando agora':isSelf?(call.muted?'Microfone desligado':'Conectado'):`${peerStateText[peerState]} no áudio`}</small></div></div>
-            {!isSelf&&<label className="member-volume"><Volume1 size={14}/><input aria-label={'Volume de '+person.name} type="range" min="0" max="100" step="5" value={personVolume(person.id)} onChange={e=>setVolumes(current=>({...current,[person.id]:Number(e.target.value)}))}/><span>{personVolume(person.id)}%</span></label>}
           </div>;
         }):<div className="member-empty"><Users size={28}/><p>Entre na call para ver quem está online.</p></div>}
       </div>
@@ -383,19 +374,17 @@ export default function Home(){
           <button type="button" className="settings-close" onClick={()=>setSettingsOpen(false)} aria-label="Fechar">×<small>ESC</small></button>
 
           {settingsTab==='audio'&&<>
-            <h2>Voz e áudio</h2><p className="settings-description">Ajuste os dispositivos e o volume só neste computador.</p>
+            <h2>Voz e áudio</h2><p className="settings-description">Escolha seus dispositivos e ajuste o processamento do microfone.</p>
             <div className="setting-block"><label>DISPOSITIVO DE ENTRADA</label><select value={call.inputDeviceId} onChange={e=>void call.switchMicrophone(e.target.value)}><option value="">Padrão do sistema</option>{inputDevices.map(device=><option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></div>
             <div className="setting-block"><label>DISPOSITIVO DE SAÍDA</label><select value={outputDeviceId} onChange={e=>setOutputDeviceId(e.target.value)} disabled={!supportsOutputSelection}>{supportsOutputSelection?<><option value="">Padrão do sistema</option>{outputDevices.map(device=><option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</>:<option>Use a saída padrão do sistema</option>}</select></div>
-            <div className="setting-block range-block"><div><label>VOLUME DAS VOZES</label><b>{masterVolume}%</b></div><input type="range" min="0" max="100" step="5" value={masterVolume} onChange={e=>setMasterVolume(Number(e.target.value))}/></div>
             <div className="setting-card switch-row"><div><strong>Processamento de voz</strong><small>Cancelamento de eco, redução de ruído e ganho automático.</small></div><button type="button" role="switch" aria-checked={call.voiceProcessing} className={'switch '+(call.voiceProcessing?'on':'')} onClick={()=>void call.setVoiceProcessing(!call.voiceProcessing)}><span/></button></div>
             <div className="setting-block"><label>SENSIBILIDADE DE QUEM ESTÁ FALANDO</label><div className="segmented">{([['low','Baixa'],['normal','Normal'],['high','Alta']] as [Sensitivity,string][]).map(([value,label])=><button type="button" className={sensitivity===value?'selected':''} key={value} onClick={()=>setSensitivity(value)}>{label}</button>)}</div></div>
             <div className="setting-card connection-card"><div><strong>{call.turnConfigured?'TURN configurado':'TURN não detectado'}</strong><small>{call.turnConfigured?'Fallback disponível para redes que bloqueiam conexão direta.':'Algumas redes podem impedir a comunicação sem TURN.'}</small></div><button type="button" onClick={()=>{void unlockRoomAudio();call.repairAudio();}}><AudioLines size={16}/> Reconectar áudio</button></div>
           </>}
 
           {settingsTab==='stream'&&<>
-            <h2>Transmissão</h2><p className="settings-description">Controle a qualidade para preservar o áudio da call.</p>
+            <h2>Transmissão</h2><p className="settings-description">Qualidade adaptativa para manter a tela fluida sem atrapalhar o áudio.</p>
             <div className="setting-block"><label>QUALIDADE</label><div className="quality-grid">{(Object.keys(qualityInfo) as ShareQuality[]).map(value=><button type="button" className={call.shareQuality===value?'selected':''} key={value} onClick={()=>void call.setShareQuality(value)}><strong>{qualityInfo[value].label}</strong><span>{qualityInfo[value].detail}</span></button>)}</div></div>
-            <div className="setting-block range-block"><div><label>VOLUME DO ÁUDIO DAS TRANSMISSÕES</label><b>{screenVolume}%</b></div><input type="range" min="0" max="100" step="5" value={screenVolume} onChange={e=>setScreenVolume(Number(e.target.value))}/></div>
             <div className="setting-card"><div><strong>Compartilhar áudio da aba</strong><small>Ao escolher uma aba ou tela no Chrome/Edge, marque “Compartilhar áudio” quando essa opção aparecer.</small></div></div>
           </>}
 
@@ -409,7 +398,7 @@ export default function Home(){
           {settingsTab==='appearance'&&<>
             <h2>Aparência</h2><p className="settings-description">Pequenos ajustes para deixar a interface mais confortável.</p>
             <div className="setting-card switch-row"><div><strong>Modo compacto</strong><small>Reduz espaços e deixa mais participantes visíveis.</small></div><button type="button" role="switch" aria-checked={compactMode} className={'switch '+(compactMode?'on':'')} onClick={()=>setCompactMode(v=>!v)}><span/></button></div>
-            <div className="setting-card switch-row"><div><strong>Lista de participantes</strong><small>Mostra volumes individuais e status de voz na lateral direita.</small></div><button type="button" role="switch" aria-checked={memberPanelOpen} className={'switch '+(memberPanelOpen?'on':'')} onClick={()=>setMemberPanelOpen(v=>!v)}><span/></button></div>
+            <div className="setting-card switch-row"><div><strong>Lista de participantes</strong><small>Mostra os participantes e o status de voz na lateral direita.</small></div><button type="button" role="switch" aria-checked={memberPanelOpen} className={'switch '+(memberPanelOpen?'on':'')} onClick={()=>setMemberPanelOpen(v=>!v)}><span/></button></div>
           </>}
         </div>
       </section>

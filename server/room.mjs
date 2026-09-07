@@ -24,15 +24,19 @@ export async function POST(req) {
         const body = await req.text();
         if (body.length > 40000)
             return Response.json({ error: 'Dados muito grandes' }, { status: 413 });
-        const { action, room, id, token, name, avatar, target, data, after } = JSON.parse(body);
+        const { action, room, id, token, clientKey, name, avatar, target, data, after } = JSON.parse(body);
         if (!ROOM.test(room || '') || !ID.test(id || '') || !ID.test(token || ''))
             return Response.json({ error: 'Sala inválida' }, { status: 400 });
         if (!['join', 'poll', 'leave', 'signal', 'profile', 'avatar'].includes(action))
             return Response.json({ error: 'Ação inválida' }, { status: 400 });
         const db = database(), now = Date.now();
         if (action === 'join') {
-            const safeAvatar = cleanAvatar(avatar);
-            const inserted = await db.prepare('INSERT INTO peers(id,room,token,name,avatar,profile_version,seen) SELECT ?,?,?,?,?,?,? WHERE (SELECT count(*) FROM peers WHERE room=? AND seen>?) < 10').bind(id, room, token, cleanName(name), safeAvatar, 1, now, room, now - 30000).run();
+            const safeAvatar = cleanAvatar(avatar), safeClientKey = ID.test(clientKey || '') ? clientKey : id;
+            // Recarregar a página ou reconectar não pode criar um segundo perfil.
+            // O client_key identifica esta aba e remove a presença antiga antes do novo join.
+            await db.prepare('DELETE FROM signals WHERE room=? AND (sender IN (SELECT id FROM peers WHERE room=? AND client_key=? AND id<>?) OR target IN (SELECT id FROM peers WHERE room=? AND client_key=? AND id<>?))').bind(room, room, safeClientKey, id, room, safeClientKey, id).run();
+            await db.prepare('DELETE FROM peers WHERE room=? AND client_key=? AND id<>?').bind(room, safeClientKey, id).run();
+            const inserted = await db.prepare('INSERT INTO peers(id,room,token,client_key,name,avatar,profile_version,seen) SELECT ?,?,?,?,?,?,?,? WHERE (SELECT count(*) FROM peers WHERE room=? AND seen>?) < 10').bind(id, room, token, safeClientKey, cleanName(name), safeAvatar, 1, now, room, now - 30000).run();
             if (!inserted.meta.changes)
                 return Response.json({ error: 'Sala cheia. O limite é de 10 pessoas.' }, { status: 409 });
         }

@@ -24,5 +24,10 @@ test('health, capacity, signaling, profile/avatar, and participant token',async(
   await call(admitted[0],'signal',{target:admitted[1].id,data:{media:{sharing:true,shareAudio:true}}});
   const signals=(await call(admitted[1],'poll')).data.signals;assert.equal(signals.length,2);assert.ok(signals.some(s=>JSON.parse(s.data).media?.sharing===true));
   await call(admitted[0],'leave');assert.equal((await call(people[joined.findIndex(r=>r.status===409)],'join')).status,200);
+  const room2=crypto.randomUUID()+'-Lounge',clientKey=crypto.randomUUID();
+  const first={room:room2,id:crypto.randomUUID(),token:crypto.randomUUID()},second={room:room2,id:crypto.randomUUID(),token:crypto.randomUUID()};
+  assert.equal((await call(first,'join',{name:'Mesmo navegador',clientKey})).status,200);
+  const secondJoin=await call(second,'join',{name:'Mesmo navegador',clientKey});assert.equal(secondJoin.status,200);assert.equal(secondJoin.data.peers.length,1);assert.equal(secondJoin.data.peers[0].id,second.id);
+  assert.equal((await call(first,'poll')).status,401);
  }finally{if(child.exitCode===null){const stopped=new Promise(r=>child.once('exit',r));child.kill();await stopped;}await rm(data,{recursive:true,force:true})}
 });

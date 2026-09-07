@@ -9,9 +9,9 @@ export type PeerState='new'|'connecting'|'connected'|'reconnecting'|'failed';
 
 type QualityPreset={width:number;height:number;fps:number;bitrate:number};
 const QUALITY:Record<ShareQuality,QualityPreset>={
- stable:{width:960,height:540,fps:12,bitrate:700000},
- balanced:{width:1280,height:720,fps:15,bitrate:1200000},
- high:{width:1920,height:1080,fps:24,bitrate:2200000},
+ stable:{width:640,height:360,fps:20,bitrate:420000},
+ balanced:{width:960,height:540,fps:20,bitrate:700000},
+ high:{width:1280,height:720,fps:24,bitrate:1200000},
 };
 
 const FALLBACK_ICE:IceServer[]=[
@@ -33,11 +33,16 @@ function preferOpus(transceiver:RTCRtpTransceiver){
 
 export function useCall(channel:string){
  const [people,setPeople]=useState<Person[]>([]),[streams,setStreams]=useState<Record<string,MediaStream>>({}),[screenStreams,setScreenStreams]=useState<Record<string,MediaStream>>({}),[remoteSharing,setRemoteSharing]=useState<Record<string,boolean>>({}),[remoteShareAudio,setRemoteShareAudio]=useState<Record<string,boolean>>({}),[avatars,setAvatars]=useState<Record<string,string>>({}),[joined,setJoined]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[muted,setMuted]=useState(false),[sharing,setSharing]=useState(false),[screen,setScreen]=useState<MediaStream|null>(null),[localStream,setLocalStream]=useState<MediaStream|null>(null),[space,setSpace]=useState(''),[shareQuality,setShareQualityState]=useState<ShareQuality>('balanced'),[shareAudio,setShareAudio]=useState(false),[peerStates,setPeerStates]=useState<Record<string,PeerState>>({}),[turnConfigured,setTurnConfigured]=useState(false),[inputDeviceId,setInputDeviceId]=useState(''),[voiceProcessing,setVoiceProcessingState]=useState(true);
- const session=useRef<Session|null>(null),mic=useRef<MediaStream|null>(null),display=useRef<MediaStream|null>(null),connections=useRef<Record<string,RTCPeerConnection>>({}),pending=useRef<Record<string,RTCIceCandidateInit[]>>({}),iceServers=useRef<IceServer[]>(FALLBACK_ICE),restartTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),watchdogTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),screenVideoSenders=useRef<Record<string,RTCRtpSender>>({}),screenAudioSenders=useRef<Record<string,RTCRtpSender>>({}),voiceSenders=useRef<Record<string,RTCRtpSender>>({}),shareQualityRef=useRef<ShareQuality>('balanced'),avatarVersions=useRef<Record<string,number>>({}),avatarLoading=useRef<Set<string>>(new Set()),offerLocks=useRef<Record<string,boolean>>({}),repairRequested=useRef<Record<string,number>>({}),mutedRef=useRef(false),micRecovering=useRef(false),inputDeviceRef=useRef(''),voiceProcessingRef=useRef(true);
+ const session=useRef<Session|null>(null),mic=useRef<MediaStream|null>(null),display=useRef<MediaStream|null>(null),connections=useRef<Record<string,RTCPeerConnection>>({}),pending=useRef<Record<string,RTCIceCandidateInit[]>>({}),iceServers=useRef<IceServer[]>(FALLBACK_ICE),restartTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),watchdogTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),screenVideoSenders=useRef<Record<string,RTCRtpSender>>({}),screenAudioSenders=useRef<Record<string,RTCRtpSender>>({}),voiceSenders=useRef<Record<string,RTCRtpSender>>({}),shareQualityRef=useRef<ShareQuality>('balanced'),avatarVersions=useRef<Record<string,number>>({}),avatarLoading=useRef<Set<string>>(new Set()),offerLocks=useRef<Record<string,boolean>>({}),repairRequested=useRef<Record<string,number>>({}),mutedRef=useRef(false),micRecovering=useRef(false),inputDeviceRef=useRef(''),voiceProcessingRef=useRef(true),clientKeyRef=useRef(''),lastTunedPeerCount=useRef(-1);
 
  useEffect(()=>{
   let key=location.hash.slice(1);
   if(!/^[a-f0-9-]{36}$/.test(key)){key=crypto.randomUUID();history.replaceState(null,'','#'+key)}
+  try{
+   let clientKey=sessionStorage.getItem('voz-tab-id')||'';
+   if(!/^[a-f0-9-]{36}$/i.test(clientKey)){clientKey=crypto.randomUUID();sessionStorage.setItem('voz-tab-id',clientKey)}
+   clientKeyRef.current=clientKey;
+  }catch{clientKeyRef.current=crypto.randomUUID()}
   setSpace(key);void loadIceConfig();
   return()=>{cleanup()};
  },[]);
@@ -68,7 +73,7 @@ export function useCall(channel:string){
   mic.current?.getTracks().forEach(t=>t.stop());
   display.current?.getTracks().forEach(t=>t.stop());
   Object.keys(connections.current).forEach(dropConnection);
-  connections.current={};pending.current={};screenVideoSenders.current={};screenAudioSenders.current={};voiceSenders.current={};mic.current=null;display.current=null;avatarLoading.current.clear();avatarVersions.current={};offerLocks.current={};repairRequested.current={};mutedRef.current=false;micRecovering.current=false;
+  connections.current={};pending.current={};screenVideoSenders.current={};screenAudioSenders.current={};voiceSenders.current={};mic.current=null;display.current=null;avatarLoading.current.clear();avatarVersions.current={};offerLocks.current={};repairRequested.current={};mutedRef.current=false;micRecovering.current=false;lastTunedPeerCount.current=-1;
  }
 
  async function request(action:string,extra:any={},s=session.current){
@@ -105,17 +110,24 @@ export function useCall(channel:string){
   try{
    const preset=QUALITY[shareQualityRef.current],remoteCount=Math.max(1,Object.keys(connections.current).length);
    const params:any=sender.getParameters();params.encodings=params.encodings?.length?params.encodings:[{}];
-   // Em mesh cada participante recebe uma cópia. Limitar cada cópia evita que
-   // a transmissão use toda a subida e corte as vozes.
-   const divisor=Math.max(1,remoteCount*.9),perPeer=Math.max(190000,Math.floor(preset.bitrate/divisor));
-   const enc=params.encodings[0];enc.maxBitrate=perPeer;enc.maxFramerate=remoteCount>=6?Math.min(10,preset.fps):remoteCount>=4?Math.min(12,preset.fps):remoteCount>=3?Math.min(15,preset.fps):preset.fps;
-   enc.scaleResolutionDownBy=remoteCount>=8?2.5:remoteCount>=6?2:remoteCount>=4?1.5:remoteCount>=3?1.25:1;
-   enc.priority='low';enc.networkPriority='low';params.degradationPreference='balanced';
+   // A call usa mesh: cada pessoa recebe uma cópia da tela. Em vez de derrubar
+   // FPS quando entram mais pessoas, reduzimos resolução/bitrate para manter a
+   // transmissão fluida e preservar a prioridade do áudio.
+   const enc=params.encodings[0];
+   const scale=remoteCount>=7?2.35:remoteCount>=5?2:remoteCount>=4?1.7:remoteCount>=3?1.45:remoteCount>=2?1.2:1;
+   const budget=remoteCount>=7?230000:remoteCount>=5?280000:remoteCount>=4?330000:remoteCount>=3?400000:remoteCount>=2?Math.min(preset.bitrate,520000):preset.bitrate;
+   enc.maxBitrate=Math.max(220000,budget);enc.maxFramerate=remoteCount>=7?15:remoteCount>=5?16:remoteCount>=3?18:preset.fps;enc.scaleResolutionDownBy=scale;enc.priority='low';enc.networkPriority='low';
+   params.degradationPreference='maintain-framerate';
    await sender.setParameters(params);
   }catch{}
  }
 
- function retuneVideo(){for(const sender of Object.values(screenVideoSenders.current) as RTCRtpSender[])if(sender.track)void tuneVideo(sender)}
+ function retuneVideo(force=false){
+  const peerCount=Object.keys(connections.current).length;
+  if(!force&&lastTunedPeerCount.current===peerCount)return;
+  lastTunedPeerCount.current=peerCount;
+  for(const sender of Object.values(screenVideoSenders.current) as RTCRtpSender[])if(sender.track)void tuneVideo(sender);
+ }
 
  function isInitiator(id:string,s:Session){return s.id<id}
 
@@ -324,7 +336,9 @@ export function useCall(channel:string){
 
  async function apply(j:any,s:Session){
   if(session.current!==s)return;
-  const peers:Array<Person>=Array.isArray(j.peers)?j.peers:[];setPeople(peers);
+  const rawPeers:Array<Person>=Array.isArray(j.peers)?j.peers:[];
+  // Defesa extra contra respostas repetidas: um id só pode aparecer uma vez na UI.
+  const peers=[...new Map(rawPeers.filter(p=>p&&typeof p.id==='string').map(p=>[p.id,p] as const)).values()];setPeople(peers);
   const ids=new Set<string>(peers.map(p=>p.id));
   for(const id of Object.keys(connections.current)){
    if(!ids.has(id)){
@@ -353,7 +367,7 @@ export function useCall(channel:string){
    const track=initialMic.getAudioTracks()[0];if(!track)throw Error('Nenhum microfone foi encontrado.');track.enabled=true;if('contentHint' in track)track.contentHint='speech';
    const s:Session={room:space+'-'+channel,id:crypto.randomUUID(),token:crypto.randomUUID(),after:0};session.current=s;mic.current=initialMic;attachMicLifecycle(track,s);setLocalStream(initialMic);const selected=track.getSettings?.().deviceId||'';inputDeviceRef.current=selected;setInputDeviceId(selected);
    if(avatar)setAvatars({[s.id]:avatar});
-   await apply(await request('join',{name:name.trim()||'Visitante',avatar},s),s);setJoined(true);void poll(s);
+   await apply(await request('join',{name:name.trim()||'Visitante',avatar,clientKey:clientKeyRef.current||s.id},s),s);setJoined(true);void poll(s);
   }catch(e:any){
    const message=e?.name==='NotAllowedError'?'Permita o microfone no navegador e tente novamente.':e?.name==='NotFoundError'?'Nenhum microfone foi encontrado neste dispositivo.':e?.message||'Não foi possível entrar na call.';
    cleanup();setJoined(false);setPeople([]);setStreams({});setScreenStreams({});setRemoteSharing({});setRemoteShareAudio({});setPeerStates({});setLocalStream(null);setError(message);
@@ -413,7 +427,7 @@ export function useCall(channel:string){
  async function setShareQuality(next:ShareQuality){
   shareQualityRef.current=next;setShareQualityState(next);
   const preset=QUALITY[next],track=display.current?.getVideoTracks()[0];
-  if(track){try{await track.applyConstraints({width:{max:preset.width},height:{max:preset.height},frameRate:{max:preset.fps}})}catch{}retuneVideo()}
+  if(track){try{await track.applyConstraints({width:{max:preset.width},height:{max:preset.height},frameRate:{max:preset.fps}})}catch{}if('contentHint' in track)track.contentHint=next==='high'?'detail':'motion';retuneVideo(true)}
  }
 
  async function share(){
@@ -424,7 +438,7 @@ export function useCall(channel:string){
    const stream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:preset.width,max:preset.width},height:{ideal:preset.height,max:preset.height},frameRate:{ideal:preset.fps,max:preset.fps}},audio:true});
    const videoTrack=stream.getVideoTracks()[0],audioTrack=stream.getAudioTracks()[0];if(!videoTrack){stream.getTracks().forEach(t=>t.stop());throw Error('Nenhuma tela foi selecionada.');}
    try{await videoTrack.applyConstraints({width:{max:preset.width},height:{max:preset.height},frameRate:{max:preset.fps}})}catch{}
-   if('contentHint' in videoTrack)videoTrack.contentHint='detail';if(audioTrack&&'contentHint' in audioTrack)audioTrack.contentHint='music';
+   if('contentHint' in videoTrack)videoTrack.contentHint=shareQualityRef.current==='high'?'detail':'motion';if(audioTrack&&'contentHint' in audioTrack)audioTrack.contentHint='music';
    display.current=stream;setScreen(stream);setSharing(true);setShareAudio(Boolean(audioTrack));videoTrack.onended=()=>{void stopScreen()};
    if(audioTrack)audioTrack.onended=()=>{setShareAudio(false);for(const sender of Object.values(screenAudioSenders.current) as RTCRtpSender[])void sender.replaceTrack(null).catch(()=>{});const s=session.current;if(s)void announceMedia(s,true,false)};
    await Promise.allSettled(Object.keys(connections.current).flatMap(id=>{
