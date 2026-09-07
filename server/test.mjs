@@ -8,7 +8,7 @@ import {join} from 'node:path';
 
 test('health, capacity, signaling, profile/avatar, and participant token',async()=>{
  const data=await mkdtemp(join(tmpdir(),'voz-test-')),port=String(18000+Math.floor(Math.random()*10000)),origin='http://localhost:'+port;
- const child=spawn(process.execPath,['server/index.mjs'],{cwd:fileURLToPath(new URL('../',import.meta.url)),env:{...process.env,PORT:port,DATA_DIR:data,TURN_URL:'turn:global.relay.metered.ca:80',TURN_USERNAME:'test-user',TURN_CREDENTIAL:'test-pass'},stdio:'ignore'});
+ const child=spawn(process.execPath,['server/index.mjs'],{cwd:fileURLToPath(new URL('../',import.meta.url)),env:{...process.env,PORT:port,DATA_DIR:data,ALLOW_LEGACY_ROOMS:'1',TURN_URL:'turn:global.relay.metered.ca:80',TURN_USERNAME:'test-user',TURN_CREDENTIAL:'test-pass'},stdio:'ignore'});
  try{
   let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(origin+'/health')).ok;if(ready)break}catch{}await new Promise(r=>setTimeout(r,100))}assert.ok(ready,'server startup');
   const cfg=await (await fetch(origin+'/api/config')).json();assert.equal(cfg.turnConfigured,true);assert.ok(cfg.turnUrls.includes('turn:global.relay.metered.ca:80?transport=tcp'));assert.ok(cfg.turnUrls.includes('turns:global.relay.metered.ca:443?transport=tcp'));
@@ -45,10 +45,6 @@ test('health, capacity, signaling, profile/avatar, and participant token',async(
   assert.equal((await call(presenceB,'join',{name:'John',clientKey:crypto.randomUUID()})).status,200);
   const presenceResponse=await fetch(origin+'/api/presence?space='+presenceSpace,{headers:{Origin:origin}});assert.equal(presenceResponse.status,200);
   const presence=(await presenceResponse.json()).peers;assert.ok(presence.some(p=>p.name==='Zen'&&p.channel==='Lounge'));assert.ok(presence.some(p=>p.name==='John'&&p.channel==='Jogatina'));
-  async function groups(action,userKey,userName,extra={}){const r=await fetch(origin+'/api/groups',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({action,userKey,userName,...extra})});return {status:r.status,data:await r.json()}}
-  const userA=crypto.randomUUID(),userB=crypto.randomUUID();const created=await groups('create',userA,'Zen',{name:'Equipe Alfa'});assert.equal(created.status,200);assert.equal(created.data.groups.length,1);const group=created.data.groups[0];assert.ok(group.inviteCode);assert.ok(group.space);
-  const joinedGroup=await groups('join',userB,'John',{code:group.inviteCode});assert.equal(joinedGroup.status,200);assert.equal(joinedGroup.data.groups.length,1);
-  const sentGroup=await groups('message',userA,'Zen',{groupId:group.id,message:'mensagem da equipe'});assert.equal(sentGroup.status,200);assert.ok(sentGroup.data.messages.some(m=>m.body==='mensagem da equipe'));
-  const polledGroup=await groups('poll',userB,'John',{groupId:group.id,after:0});assert.equal(polledGroup.status,200);assert.equal(polledGroup.data.members.length,2);assert.ok(polledGroup.data.messages.some(m=>m.body==='mensagem da equipe'));
  }finally{if(child.exitCode===null){const stopped=new Promise(r=>child.once('exit',r));child.kill();await stopped;}await rm(data,{recursive:true,force:true})}
 });
+

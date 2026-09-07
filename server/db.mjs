@@ -1,9 +1,17 @@
+import { migrateCommunity } from './migrate.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync,readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 const dir=process.env.DATA_DIR||'./data';mkdirSync(dir,{recursive:true});
-const sqlite=new DatabaseSync(resolve(dir,'voz.sqlite'));
+export const sqlite=new DatabaseSync(resolve(dir,'voz.sqlite'));
 sqlite.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
+let backedUp=false;
+const existing=sqlite.prepare("SELECT name FROM sqlite_master WHERE name='peers'").get();
+const migrated=sqlite.prepare("SELECT name FROM sqlite_master WHERE name='app_migrations'").get()&&sqlite.prepare('SELECT version FROM app_migrations WHERE version=2').get();
+if(existing&&!migrated){
+ const backupPath=resolve(dir,'before-community-'+Date.now()+'.sqlite').replaceAll("'","''");
+ sqlite.exec("VACUUM INTO '"+backupPath+"'");backedUp=true;
+}
 if(!sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='peers'").get())sqlite.exec(readFileSync(new URL('./schema.sql',import.meta.url),'utf8'));
 // Migra volumes existentes do Railway sem apagar salas ou exigir recriar o banco.
 const peerColumns=new Set(sqlite.prepare('PRAGMA table_info(peers)').all().map(row=>row.name));
@@ -59,7 +67,10 @@ sqlite.exec(`CREATE TABLE IF NOT EXISTS group_messages (
 )`);
 sqlite.exec('CREATE INDEX IF NOT EXISTS group_messages_group_id ON group_messages(group_id,id)');
 
+migrateCommunity(sqlite,backedUp);
 function prepare(sql){let params=[];const stmt=sqlite.prepare(sql);return {bind(...values){params=values;return this},first(){return stmt.get(...params)||null},run(){const r=stmt.run(...params);return {meta:{changes:Number(r.changes)}}},execute(){if(stmt.columns().length)return {results:stmt.all(...params)};this.run();return {results:[]}}}}
 export function database(){return {prepare,batch(statements){sqlite.exec('BEGIN');try{const r=statements.map(s=>s.execute());sqlite.exec('COMMIT');return r}catch(e){sqlite.exec('ROLLBACK');throw e}}}}
 // Signaling é efêmero: remove participantes e ofertas abandonados globalmente.
 setInterval(()=>{const now=Date.now();sqlite.prepare('DELETE FROM peers WHERE seen<?').run(now-120000);sqlite.prepare('DELETE FROM signals WHERE created<?').run(now-120000)},60000).unref();
+
+

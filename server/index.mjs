@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFile,stat } from 'node:fs/promises';
 import { resolve,extname,sep } from 'node:path';
 import { POST,PRESENCE } from './room.mjs';
-import { GROUPS } from './groups.mjs';
+import { COMMUNITY } from './community.mjs';
 const root=resolve('dist'),port=Number(process.env.PORT||8080);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2'};
 
@@ -43,17 +43,17 @@ const server=createServer(async(req,res)=>{try{
  }
  if(url.pathname==='/api/presence'){
   if(req.method!=='GET'){res.writeHead(405);res.end();return}
-  const result=await PRESENCE(new Request(url,{method:'GET',headers:{origin:req.headers.origin||''}}));res.writeHead(result.status,Object.fromEntries(result.headers));res.end(await result.text());return
+  const result=await PRESENCE(new Request(url,{method:'GET',headers:{origin:req.headers.origin||'',authorization:req.headers.authorization||''}}));res.writeHead(result.status,Object.fromEntries(result.headers));res.end(await result.text());return
  }
- if(url.pathname==='/api/groups'){
+ if(url.pathname==='/api/community' || url.pathname==='/api/groups'){
   if(req.method!=='POST'){res.writeHead(405);res.end();return}
-  let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>12000){res.writeHead(413);res.end();return}chunks.push(chunk)}
-  const result=await GROUPS(new Request(new URL('/api/groups',origin),{method:'POST',headers:{origin:req.headers.origin||'','Content-Type':'application/json'},body:Buffer.concat(chunks)}));res.writeHead(result.status,Object.fromEntries(result.headers));res.end(await result.text());return
+  let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>40000){res.writeHead(413);res.end();return}chunks.push(chunk)}
+  const result=await COMMUNITY(new Request(new URL('/api/groups',origin),{method:'POST',headers:{origin:req.headers.origin||'',authorization:req.headers.authorization||'','Content-Type':'application/json'},body:Buffer.concat(chunks)}));res.writeHead(result.status,Object.fromEntries(result.headers));res.end(await result.text());return
  }
  if(url.pathname==='/api/room'){
   if(req.method!=='POST'){res.writeHead(405);res.end();return}
   let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>40000){res.writeHead(413);res.end();return}chunks.push(chunk)}
-  const result=await POST(new Request(new URL('/api/room',origin),{method:'POST',headers:{origin:req.headers.origin||'','Content-Type':'application/json'},body:Buffer.concat(chunks)}));res.writeHead(result.status,Object.fromEntries(result.headers));res.end(await result.text());return
+  const result=await POST(new Request(new URL('/api/room',origin),{method:'POST',headers:{origin:req.headers.origin||'',authorization:req.headers.authorization||'','Content-Type':'application/json'},body:Buffer.concat(chunks)}));res.writeHead(result.status,Object.fromEntries(result.headers));res.end(await result.text());return
  }
  if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405);res.end();return}
  let path=resolve(root,'.'+decodeURIComponent(url.pathname));if(path!==root&&!path.startsWith(root+sep)){res.writeHead(403);res.end();return}
@@ -63,3 +63,4 @@ const server=createServer(async(req,res)=>{try{
 }catch(e){console.error('Request failed:',e.message);if(!res.headersSent)res.writeHead(500);res.end('Internal error')}});
 server.listen(port,'0.0.0.0',()=>console.log(`Voz listening on ${port}`));
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
+

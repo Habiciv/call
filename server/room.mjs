@@ -1,3 +1,4 @@
+import { authorizeRoom,authorizePresence } from './access.mjs';
 import { database } from './db.mjs';
 const ID = /^[a-zA-Z0-9-]{36}$/;
 const ROOM = /^[a-zA-Z0-9-]{32,100}$/;
@@ -25,7 +26,7 @@ function peerQuery() {
 
 export async function PRESENCE(req) {
     try {
-        const url = new URL(req.url);
+        authorizePresence(req); const url = new URL(req.url);
         const space = url.searchParams.get('space') || '';
         if (!ID.test(space))
             return Response.json({ error: 'Espaço inválido' }, { status: 400 });
@@ -49,6 +50,7 @@ export async function PRESENCE(req) {
         return Response.json({ peers }, { headers: { 'Cache-Control': 'no-store' } });
     }
     catch (error) {
+        if(error.status)return Response.json({error:error.message},{status:error.status});
         console.error('Presence request failed:', error);
         return Response.json({ error: 'Não foi possível carregar quem está nas calls.' }, { status: 500 });
     }
@@ -67,7 +69,10 @@ export async function POST(req) {
         if (!['join', 'poll', 'leave', 'signal', 'profile', 'avatar', 'chat'].includes(action))
             return Response.json({ error: 'Ação inválida' }, { status: 400 });
         const db = database(), now = Date.now();
+        const account = authorizeRoom(req,room);
         if (action === 'join') {
+            const existing=await db.prepare('SELECT user_key FROM peers WHERE id=?').bind(id).first();
+            if(existing&&account&&existing.user_key!==account.user_key)return Response.json({error:'Identificador em uso.'},{status:403});
             const safeAvatar = cleanAvatar(avatar), safeClientKey = ID.test(clientKey || '') ? clientKey : id;
             // Recarregar a página ou reconectar não pode criar um segundo perfil.
             // O client_key identifica esta aba e remove a presença antiga antes do novo join.
@@ -77,6 +82,7 @@ export async function POST(req) {
             // Mesmo se duas requisições chegarem quase juntas, não estoura o
             // índice único nem devolve erro 500 para o usuário.
             const inserted = await db.prepare('INSERT OR REPLACE INTO peers(id,room,token,client_key,name,avatar,profile_version,seen) SELECT ?,?,?,?,?,?,?,? WHERE (SELECT count(*) FROM peers WHERE room=? AND seen>?) < 10').bind(id, room, token, safeClientKey, cleanName(name), safeAvatar, 1, now, room, now - 30000).run();
+            if(account)await db.prepare('UPDATE peers SET user_key=? WHERE id=? AND room=?').bind(account.user_key,id,room).run();
             if (!inserted.meta.changes)
                 return Response.json({ error: 'Sala cheia. O limite é de 10 pessoas.' }, { status: 409 });
         }
@@ -134,6 +140,7 @@ export async function POST(req) {
         return Response.json({ peers: results[0].results, signals: results[1].results, messages: results[2].results }, { headers: { 'Cache-Control': 'no-store' } });
     }
     catch (error) {
+        if(error.status)return Response.json({error:error.message},{status:error.status});
         if (error instanceof Error && error.message === 'MESSAGE_EMPTY')
             return Response.json({ error: 'Digite uma mensagem antes de enviar.' }, { status: 400 });
         if (error instanceof Error && error.message === 'AVATAR_INVALID')
@@ -142,3 +149,6 @@ export async function POST(req) {
         return Response.json({ error: 'Não foi possível conectar à sala. Tente novamente.' }, { status: 500 });
     }
 }
+
+
+
