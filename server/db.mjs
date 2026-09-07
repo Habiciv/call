@@ -31,6 +31,34 @@ sqlite.exec(`CREATE TABLE IF NOT EXISTS messages (
  created integer NOT NULL
 )`);
 sqlite.exec('CREATE INDEX IF NOT EXISTS messages_room_id ON messages(room,id)');
+
+sqlite.exec(`CREATE TABLE IF NOT EXISTS groups (
+ id text PRIMARY KEY NOT NULL,
+ name text NOT NULL,
+ invite_code text NOT NULL UNIQUE,
+ owner_key text NOT NULL,
+ space text NOT NULL UNIQUE,
+ created integer NOT NULL
+)`);
+sqlite.exec(`CREATE TABLE IF NOT EXISTS group_members (
+ group_id text NOT NULL,
+ user_key text NOT NULL,
+ name text NOT NULL,
+ role text NOT NULL DEFAULT 'member',
+ joined integer NOT NULL,
+ PRIMARY KEY(group_id,user_key)
+)`);
+sqlite.exec('CREATE INDEX IF NOT EXISTS group_members_user ON group_members(user_key,group_id)');
+sqlite.exec(`CREATE TABLE IF NOT EXISTS group_messages (
+ id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+ group_id text NOT NULL,
+ user_key text NOT NULL,
+ name text NOT NULL,
+ body text NOT NULL,
+ created integer NOT NULL
+)`);
+sqlite.exec('CREATE INDEX IF NOT EXISTS group_messages_group_id ON group_messages(group_id,id)');
+
 function prepare(sql){let params=[];const stmt=sqlite.prepare(sql);return {bind(...values){params=values;return this},first(){return stmt.get(...params)||null},run(){const r=stmt.run(...params);return {meta:{changes:Number(r.changes)}}},execute(){if(stmt.columns().length)return {results:stmt.all(...params)};this.run();return {results:[]}}}}
 export function database(){return {prepare,batch(statements){sqlite.exec('BEGIN');try{const r=statements.map(s=>s.execute());sqlite.exec('COMMIT');return r}catch(e){sqlite.exec('ROLLBACK');throw e}}}}
 // Signaling é efêmero: remove participantes e ofertas abandonados globalmente.

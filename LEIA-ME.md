@@ -1,126 +1,28 @@
-# Voz — interface estilo app de comunidades + call WebRTC
+# Voz Railway — Grupos + Chat + tema Operações
 
-Esta versão mantém as correções de áudio/TURN da versão anterior e troca a interface por um layout inspirado em apps como Discord, sem copiar logo ou identidade visual.
+Versão com:
 
-## O que tem nesta versão
+- grupos persistentes no SQLite;
+- criar grupo e entrar por código de convite;
+- lista de grupos na barra lateral;
+- chat persistente por grupo, mesmo fora da call;
+- lista de membros do grupo;
+- canais de voz separados por grupo;
+- convite para adicionar pessoas ao grupo;
+- dono do grupo pode excluir o grupo; membros podem sair;
+- WebRTC/TURN e transmissão 4K adaptativa mantidos;
+- visual preto/grafite + verde inspirado em estética tática/BOPE, sem usar brasão ou logotipo oficial.
 
-### Interface
+## Railway
 
-- Barra lateral de espaços.
-- Lista de canais de voz.
-- Participantes dentro do canal selecionado.
-- Painel lateral com membros online.
-- Destaque verde para quem está falando.
-- Painel inferior de **Voz conectada**.
-- Controles de call centralizados.
-- Modo compacto.
-- Foto e nome de perfil.
-- Busca de canais.
+Mantenha as variáveis TURN já configuradas:
 
-### Call
+- `TURN_URL`
+- `TURN_USERNAME`
+- `TURN_CREDENTIAL`
 
-- Silenciar/ativar microfone.
-- **Ensurdecer**: silencia as vozes recebidas e também desliga seu microfone enquanto estiver ativo.
-- Áudio recebido sempre em **100%**; o controle de volume interno foi removido para evitar configurações salvas baixas.
-- Escolha de microfone.
-- Escolha da saída de áudio em navegadores que suportam `setSinkId` (Chrome/Edge normalmente suportam).
-- Cancelamento de eco, redução de ruído e ganho automático ativáveis/desativáveis.
-- Sensibilidade de detecção de fala.
-- Reconexão manual de áudio.
-- Reconexão WebRTC/ICE automática quando uma conexão falha.
-- Opus priorizado para voz.
+O banco usa `DATA_DIR=/data` no Railway e cria/migra as novas tabelas automaticamente.
 
-### Transmissão de tela
+## Observação
 
-- Tela compartilhada aparece em destaque na call.
-- Recebe transmissões de participantes que já estavam na sala e de quem começa a transmitir depois.
-- Áudio da transmissão também inicia em **100%**.
-- Presets mais leves:
-  - **Estável:** 360p / 20 FPS
-  - **Equilibrada:** 540p / 20 FPS
-  - **Nítida:** 720p / 24 FPS
-- A transmissão prioriza manter FPS e reduz resolução/bitrate conforme entram mais pessoas.
-- O `RTCRtpSender` só é reconfigurado quando a quantidade de participantes ou a qualidade muda; antes isso acontecia a cada poll e podia causar engasgos.
-
-Para compartilhar som no Chrome/Edge, marque **Compartilhar áudio** quando o navegador mostrar essa opção.
-
-### Correção de perfis duplicados
-
-Cada aba ganha um identificador persistente em `sessionStorage`. Ao recarregar/reconectar, o servidor remove a presença antiga dessa mesma aba antes de criar a nova. O banco também tem índice único por sala + aba como proteção adicional.
-
-## TURN no Railway
-
-Use as credenciais reais do seu servidor TURN nas Variables do Railway:
-
-```text
-TURN_URL=turn:global.relay.metered.ca:80
-TURN_USERNAME=SEU_USERNAME_REAL
-TURN_CREDENTIAL=SUA_CREDENTIAL_REAL
-```
-
-Se estiver usando Metered com a rota global em `:80`, o servidor também cria rotas de fallback TCP/TLS/443 automaticamente.
-
-Não coloque `TURN_USERNAME` ou `TURN_CREDENTIAL` no GitHub.
-
-Depois de alterar Variables, faça um **Redeploy**.
-
-## Publicar
-
-1. Extraia o ZIP.
-2. Abra a pasta `voz-railway-discord-ui`.
-3. Envie **o conteúdo de dentro dela** para a raiz do repositório.
-4. `Dockerfile`, `server`, `app`, `package.json` e `railway.json` precisam ficar na raiz.
-5. No Railway, use o Dockerfile do projeto.
-6. Se estiver usando o SQLite persistente, mantenha o Volume em `/data` e uma única réplica.
-
-O Dockerfile faz o build do frontend automaticamente; não é necessário enviar `dist` manualmente.
-
-## Teste do servidor
-
-```sh
-pnpm test
-```
-
-O teste cobre health check, capacidade da sala, autenticação por token, sinalização, perfil/avatar, reconexão sem perfil duplicado e configuração TURN.
-
-
-## Correção de canais / entrada
-- Clique em qualquer canal de voz para entrar diretamente.
-- Trocar de canal enquanto conectado move a sessão para o novo canal.
-- Bloqueio imediato contra JOIN duplicado.
-- Migração segura remove presenças duplicadas antigas antes do índice único.
-- JOIN idempotente evita erro 500 em cliques/requisições concorrentes.
-
-- Corrigido conflito de build: o Railway não sobrescreve mais `server/room.mjs` com uma versão antiga de `room.ts`.
-
-## Correção de transmissão desta versão
-- Corrige faixa de vídeo sendo colocada dentro do card de participante (quadrado preto/carregando).
-- Separa de forma explícita voz, vídeo da tela e áudio da tela por receptor WebRTC.
-- A transmissão só aparece no palco de compartilhamento e some quando a faixa de tela é silenciada/encerrada.
-- Mantém TURN, reconexão e canais da versão anterior.
-
-
-## Correção de transmissão fantasma
-
-O indicador **AO VIVO** agora depende somente do evento explícito de compartilhamento de tela. O transceiver WebRTC de vídeo reservado não ativa mais uma transmissão sozinho.
-
-
-## Correção de transmissão presa em “Conectando”
-
-Nesta versão o compartilhamento de tela não depende apenas do evento `ontrack` do navegador. Ao iniciar uma transmissão, o cliente: (1) anexa a faixa de tela ao sender, (2) renegocia o SDP uma única vez por participante, (3) sinaliza o estado AO VIVO e (4) no receptor associa diretamente o `RTCRtpReceiver` reservado ao `MediaStream`. Se nenhum frame chegar em ~2,2 s, o receptor pede automaticamente uma reparação da transmissão. Isso evita o estado infinito “Conectando transmissão…” observado em Chrome/Edge.
-
-
-## Presença nos canais
-A barra lateral agora mostra quem está conectado em Lounge, Jogatina e Foco mesmo quando você está em outro canal, no estilo do Discord. A lista é atualizada automaticamente e não conecta seu áudio com os outros canais.
-
-## Correção de múltiplas janelas
-Esta versão detecta quando Edge/Chrome duplica o `sessionStorage` ao duplicar uma aba/janela. Cada janela ativa passa a receber um identificador próprio, enquanto um simples recarregamento mantém a identidade para não duplicar o perfil no servidor.
-
-
-## Novidades desta versão
-- Chat em tempo real por canal de voz, com histórico curto salvo no SQLite.
-- Presets de transmissão de 540p até 4K/30 FPS.
-- 4K é adaptativo: com vários participantes o bitrate/resolução cai automaticamente para priorizar áudio e fluidez.
-- TURN continua recomendado para redes restritas.
-
-> Observação: a call atual usa WebRTC mesh (cada participante envia uma cópia para cada pessoa). 4K funciona melhor com 2 pessoas e boa conexão; para grupos grandes, um SFU é a arquitetura ideal.
+O sistema de grupos usa uma identidade local gerada no navegador (`localStorage`). Ele é adequado para este projeto sem login, mas não substitui autenticação real caso você queira contas, permissões fortes ou moderação avançada no futuro.

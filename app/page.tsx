@@ -18,8 +18,14 @@ import {
   Trash2,
   MessageCircle,
   Send,
+  Plus,
+  Shield,
+  Copy,
+  LogOut,
+  Crown,
 } from 'lucide-react';
 import {useCall,type ShareQuality} from './use-call';
+import {useGroups} from './use-groups';
 
 type Sensitivity='low'|'normal'|'high';
 type SettingsTab='audio'|'stream'|'profile'|'appearance';
@@ -168,10 +174,16 @@ export default function Home(){
   const [outputDevices,setOutputDevices]=useState<AudioDevice[]>([]);
   const [outputDeviceId,setOutputDeviceId]=useState('');
   const [channelPresence,setChannelPresence]=useState<Record<string,PresencePerson[]>>({});
+  const [groupDialogOpen,setGroupDialogOpen]=useState(false);
+  const [groupMode,setGroupMode]=useState<'create'|'join'>('create');
+  const [groupInput,setGroupInput]=useState('');
+  const [groupNotice,setGroupNotice]=useState('');
   const mutedBeforeDeafen=useRef(false);
   const photoInput=useRef<HTMLInputElement>(null);
   const chatEndRef=useRef<HTMLDivElement>(null);
-  const call=useCall(channel);
+  const groupsApi=useGroups(name);
+  const selectedGroup=groupsApi.groups.find(group=>group.id===groupsApi.selectedId)||groupsApi.groups[0]||null;
+  const call=useCall(channel,selectedGroup?.space||'');
 
   useEffect(()=>{
     try{
@@ -188,7 +200,7 @@ export default function Home(){
   useEffect(()=>{try{localStorage.removeItem('voz-master-volume');localStorage.removeItem('voz-screen-volume');localStorage.setItem('voz-sensitivity',sensitivity);localStorage.setItem('voz-output-device',outputDeviceId);localStorage.setItem('voz-compact',compactMode?'1':'0');}catch{}},[sensitivity,outputDeviceId,compactMode]);
   useEffect(()=>{if(!call.joined)setDeafened(false);},[call.joined]);
   useEffect(()=>{if(!settingsOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setSettingsOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[settingsOpen]);
-  useEffect(()=>{if(chatOpen)chatEndRef.current?.scrollIntoView({block:'end'});},[chatOpen,call.messages.length]);
+  useEffect(()=>{if(chatOpen)chatEndRef.current?.scrollIntoView({block:'end'});},[chatOpen,groupsApi.messages.length]);
 
   useEffect(()=>{
     let active=true;
@@ -239,8 +251,28 @@ export default function Home(){
   const supportsOutputSelection=typeof HTMLMediaElement!=='undefined'&&'setSinkId' in HTMLMediaElement.prototype;
 
   async function sendChat(){
-    const text=chatText.trim();if(!text||!call.joined)return;
-    const ok=await call.sendMessage(text);if(ok)setChatText('');
+    const text=chatText.trim();if(!text||!selectedGroup)return;
+    const ok=await groupsApi.send(text);if(ok)setChatText('');
+  }
+
+  async function selectGroup(id:string){
+    if(groupsApi.selectedId===id)return;
+    if(call.joined)call.leave();
+    setSpeaking({});setDeafened(false);setChannel('Lounge');setChannelPresence({});setChatOpen(false);
+    groupsApi.setSelectedId(id);
+  }
+
+  async function submitGroup(){
+    const value=groupInput.trim();if(!value)return;
+    setGroupNotice('');
+    const result=groupMode==='create'?await groupsApi.create(value):await groupsApi.join(value.toUpperCase());
+    if(result){setGroupInput('');setGroupNotice(groupMode==='create'?'Grupo criado.':'Você entrou no grupo.');setGroupDialogOpen(false);}
+  }
+
+  async function copyInvite(){
+    if(!selectedGroup)return;
+    try{await navigator.clipboard.writeText(selectedGroup.inviteCode);setGroupNotice('Código do grupo copiado.');}
+    catch{setGroupNotice(`Código: ${selectedGroup.inviteCode}`);}
   }
 
   async function choosePhoto(file?:File){
@@ -288,16 +320,15 @@ export default function Home(){
   const voiceConnected=call.joined?call.people.filter(p=>p.id!==call.self).every(p=>(call.peerStates[p.id]||'connecting')==='connected'):false;
 
   return <div className={'discord-shell '+(compactMode?'compact ':'')+((memberPanelOpen||chatOpen)?'members-open':'members-closed')+(chatOpen?' chat-open':'')}>
-    <aside className="server-rail" aria-label="Espaços">
-      <button type="button" className="server-pill home selected" aria-label="Voz"><Radio size={25}/></button>
+    <aside className="server-rail" aria-label="Grupos">
+      <button type="button" className="server-pill home selected bope-home" aria-label="Central"><Shield size={24}/></button>
       <div className="rail-separator"/>
-      <div className="server-pill decorative">VG</div>
-      <div className="server-pill decorative">+</div>
-      <div className="server-pill decorative">?</div>
+      {groupsApi.groups.map(group=><button type="button" key={group.id} className={'server-pill group-pill '+(selectedGroup?.id===group.id?'selected':'')} title={`${group.name} · ${group.memberCount} membros`} onClick={()=>void selectGroup(group.id)}>{group.name.slice(0,2).toUpperCase()}</button>)}
+      <button type="button" className="server-pill add-group" aria-label="Criar ou entrar em grupo" onClick={()=>{setGroupMode('create');setGroupDialogOpen(true);}}><Plus size={21}/></button>
     </aside>
 
     <aside className="channel-sidebar">
-      <div className="server-header"><strong>Voz da Galera</strong><span>⌄</span></div>
+      <div className="server-header"><strong>{selectedGroup?.name||'Central BOPE'}</strong><button type="button" className="server-header-action" onClick={()=>setGroupDialogOpen(true)} title="Gerenciar grupo"><Shield size={16}/></button></div>
       <div className="channel-search"><input aria-label="Buscar canal" value={channelSearch} onChange={e=>setChannelSearch(e.target.value)} placeholder="Buscar canal"/></div>
       <div className="channel-scroll">
         <div className="category"><span>INFORMAÇÕES</span><b>+</b></div>
@@ -347,7 +378,7 @@ export default function Home(){
       <header className="topbar">
         <div className="channel-title"><Volume2 size={20}/><strong>{channel}</strong><span>Canal de voz</span></div>
         <div className="topbar-actions">
-          <button type="button" onClick={call.invite} title="Copiar convite"><Link size={18}/><span>Convidar</span></button>
+          <button type="button" onClick={()=>void copyInvite()} title="Copiar convite do grupo" disabled={!selectedGroup}><Link size={18}/><span>Adicionar pessoas</span></button>
           <button type="button" className={chatOpen?'active':''} onClick={()=>setChatOpen(v=>!v)} title="Abrir chat"><MessageCircle size={19}/><span>Chat</span></button>
           <button type="button" className={memberPanelOpen&&!chatOpen?'active':''} onClick={()=>{setChatOpen(false);setMemberPanelOpen(v=>!v);}} title="Mostrar participantes"><Users size={19}/></button>
           <button type="button" className={settingsOpen?'active':''} onClick={()=>{setSettingsTab('audio');setSettingsOpen(true);}} title="Configurações"><SlidersHorizontal size={19}/></button>
@@ -411,17 +442,17 @@ export default function Home(){
 
     <aside className="member-sidebar" aria-label={chatOpen?'Chat':'Participantes'}>
       {chatOpen?<>
-        <div className="member-header chat-header"><strong># chat · {channel}</strong><span>{call.messages.length}</span></div>
+        <div className="member-header chat-header"><strong># chat · {selectedGroup?.name||'grupo'}</strong><span>{groupsApi.messages.length}</span></div>
         <div className="chat-list">
-          {call.joined&&call.messages.length?call.messages.map(msg=><div className={'chat-message '+(msg.sender===call.self?'mine':'')} key={msg.id}>
+          {selectedGroup&&groupsApi.messages.length?groupsApi.messages.map(msg=><div className={'chat-message '+(msg.userKey===groupsApi.userKey()?'mine':'')} key={msg.id}>
             <div className="chat-message-avatar">{(msg.name||'V').slice(0,2).toUpperCase()}</div>
             <div className="chat-message-body"><div><strong>{msg.name}</strong><time>{new Date(msg.created).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</time></div><p>{msg.body}</p></div>
-          </div>):<div className="member-empty"><MessageCircle size={30}/><p>{call.joined?'Ainda não tem mensagens. Manda a primeira!':'Entre na call para usar o chat do canal.'}</p></div>}
+          </div>):<div className="member-empty"><MessageCircle size={30}/><p>{selectedGroup?'Ainda não tem mensagens. Manda a primeira!':'Crie ou entre em um grupo para conversar.'}</p></div>}
           <div ref={chatEndRef}/>
         </div>
         <form className="chat-compose" onSubmit={e=>{e.preventDefault();void sendChat();}}>
-          <input value={chatText} disabled={!call.joined} maxLength={1000} onChange={e=>setChatText(e.target.value)} placeholder={call.joined?`Mensagem em #${channel}`:'Entre na call para conversar'}/>
-          <button type="submit" disabled={!call.joined||!chatText.trim()} aria-label="Enviar mensagem"><Send size={17}/></button>
+          <input value={chatText} disabled={!selectedGroup} maxLength={1500} onChange={e=>setChatText(e.target.value)} placeholder={selectedGroup?`Mensagem em ${selectedGroup.name}`:'Selecione um grupo'}/>
+          <button type="submit" disabled={!selectedGroup||!chatText.trim()} aria-label="Enviar mensagem"><Send size={17}/></button>
         </form>
       </>:<>
         <div className="member-header"><strong>Participantes</strong><span>{call.joined?call.people.length:0}</span></div>
@@ -477,6 +508,17 @@ export default function Home(){
             <div className="setting-card switch-row"><div><strong>Lista de participantes</strong><small>Mostra os participantes e o status de voz na lateral direita.</small></div><button type="button" role="switch" aria-checked={memberPanelOpen} className={'switch '+(memberPanelOpen?'on':'')} onClick={()=>setMemberPanelOpen(v=>!v)}><span/></button></div>
           </>}
         </div>
+      </section>
+    </div>}
+
+    {groupDialogOpen&&<div className="group-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setGroupDialogOpen(false);}}>
+      <section className="group-modal" role="dialog" aria-modal="true" aria-label="Grupos">
+        <button type="button" className="group-close" onClick={()=>setGroupDialogOpen(false)}>×</button>
+        <div className="group-modal-brand"><Shield size={26}/><div><strong>Central de grupos</strong><span>Organize sua equipe, voz e chat.</span></div></div>
+        <div className="group-tabs"><button type="button" className={groupMode==='create'?'active':''} onClick={()=>{setGroupMode('create');setGroupInput('');}}>Criar grupo</button><button type="button" className={groupMode==='join'?'active':''} onClick={()=>{setGroupMode('join');setGroupInput('');}}>Entrar com código</button></div>
+        <form onSubmit={e=>{e.preventDefault();void submitGroup();}} className="group-form"><label>{groupMode==='create'?'NOME DO GRUPO':'CÓDIGO DE CONVITE'}</label><input autoFocus value={groupInput} maxLength={groupMode==='create'?32:12} onChange={e=>setGroupInput(e.target.value)} placeholder={groupMode==='create'?'Ex.: Equipe Alfa':'Ex.: A1B2C3D4E5'}/><button type="submit" disabled={groupsApi.busy||!groupInput.trim()}>{groupsApi.busy?'Aguarde…':groupMode==='create'?'Criar grupo':'Entrar no grupo'}</button></form>
+        {selectedGroup&&<div className="group-current"><div className="group-current-head"><div><span>GRUPO ATUAL</span><strong>{selectedGroup.name}</strong><small>{selectedGroup.memberCount} membro(s)</small></div>{selectedGroup.ownerKey===groupsApi.userKey()&&<Crown size={19}/>}</div><div className="invite-code"><code>{selectedGroup.inviteCode}</code><button type="button" onClick={()=>void copyInvite()}><Copy size={16}/> Copiar código</button></div><div className="group-member-preview">{groupsApi.members.slice(0,8).map(member=><span key={member.userKey}>{member.role==='owner'&&<Crown size={12}/>} {member.name}</span>)}</div><div className="group-danger-actions">{selectedGroup.ownerKey===groupsApi.userKey()?<button type="button" className="danger-link" onClick={async()=>{if(confirm('Excluir este grupo e o chat?')){if(call.joined)call.leave();await groupsApi.remove(selectedGroup.id);setGroupDialogOpen(false);}}}>Excluir grupo</button>:<button type="button" className="danger-link" onClick={async()=>{if(call.joined)call.leave();await groupsApi.leave(selectedGroup.id);setGroupDialogOpen(false);}}><LogOut size={14}/> Sair do grupo</button>}</div></div>}
+        {(groupsApi.error||groupNotice)&&<p className="group-feedback">{groupsApi.error||groupNotice}</p>}
       </section>
     </div>}
 
