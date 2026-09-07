@@ -83,3 +83,13 @@ Sem TURN, a chamada ainda tenta funcionar usando STUN, mas não há como garanti
 - ICE reinicia automaticamente se uma conexão cair;
 - sinalização é consultada mais rápido durante a call;
 - compartilhamento é limitado a 720p/15 FPS e bitrate adaptado ao número de conexões para preservar o áudio.
+
+## Atualização: indicador de fala, volume e transmissão
+
+- O cartão da pessoa ganha borda/pulso e o selo **Falando** quando a voz é detectada.
+- Cada participante remoto tem controle de volume próprio (0–100%).
+- O painel **Áudio** tem volume geral e sensibilidade da detecção de fala.
+- A transmissão tem três presets: Estável (540p/15 FPS), Equilibrada (720p/20 FPS) e Nítida (1080p/30 FPS).
+- O bitrate de tela se adapta ao número de participantes para não sacrificar o áudio da chamada.
+- O compartilhamento solicita áudio da aba/tela. No Chrome/Edge, escolha uma aba/janela que permita áudio e marque **Compartilhar áudio** quando essa opção aparecer.
+- A voz continua com prioridade de rede sobre o vídeo.
