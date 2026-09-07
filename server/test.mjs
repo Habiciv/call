@@ -34,5 +34,10 @@ test('health, capacity, signaling, profile/avatar, and participant token',async(
   const rapid=await Promise.all([call(rapidA,'join',{name:'Clique rápido',clientKey:rapidClient}),call(rapidB,'join',{name:'Clique rápido',clientKey:rapidClient})]);
   assert.ok(rapid.every(result=>result.status===200),'rapid duplicate joins must not return 500');
   const rapidPeers=rapid[rapid.length-1].data.peers;assert.equal(rapidPeers.length,1);
+  const presenceSpace=crypto.randomUUID(),presenceA={room:presenceSpace+'-Lounge',id:crypto.randomUUID(),token:crypto.randomUUID()},presenceB={room:presenceSpace+'-Jogatina',id:crypto.randomUUID(),token:crypto.randomUUID()};
+  assert.equal((await call(presenceA,'join',{name:'Zen',clientKey:crypto.randomUUID()})).status,200);
+  assert.equal((await call(presenceB,'join',{name:'John',clientKey:crypto.randomUUID()})).status,200);
+  const presenceResponse=await fetch(origin+'/api/presence?space='+presenceSpace,{headers:{Origin:origin}});assert.equal(presenceResponse.status,200);
+  const presence=(await presenceResponse.json()).peers;assert.ok(presence.some(p=>p.name==='Zen'&&p.channel==='Lounge'));assert.ok(presence.some(p=>p.name==='John'&&p.channel==='Jogatina'));
  }finally{if(child.exitCode===null){const stopped=new Promise(r=>child.once('exit',r));child.kill();await stopped;}await rm(data,{recursive:true,force:true})}
 });

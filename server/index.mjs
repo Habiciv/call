@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile,stat } from 'node:fs/promises';
 import { resolve,extname,sep } from 'node:path';
-import { POST } from './room.mjs';
+import { POST,PRESENCE } from './room.mjs';
 const root=resolve('dist'),port=Number(process.env.PORT||8080);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2'};
 
@@ -39,6 +39,10 @@ const server=createServer(async(req,res)=>{try{
  if(url.pathname==='/api/config'){
   if(req.method!=='GET'){res.writeHead(405);res.end();return}
   res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(iceConfig()));return
+ }
+ if(url.pathname==='/api/presence'){
+  if(req.method!=='GET'){res.writeHead(405);res.end();return}
+  const result=await PRESENCE(new Request(url,{method:'GET',headers:{origin:req.headers.origin||''}}));res.writeHead(result.status,Object.fromEntries(result.headers));res.end(await result.text());return
  }
  if(url.pathname==='/api/room'){
   if(req.method!=='POST'){res.writeHead(405);res.end();return}

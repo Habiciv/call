@@ -108,3 +108,7 @@ O indicador **AO VIVO** agora depende somente do evento explícito de compartilh
 ## Correção de transmissão presa em “Conectando”
 
 Nesta versão o compartilhamento de tela não depende apenas do evento `ontrack` do navegador. Ao iniciar uma transmissão, o cliente: (1) anexa a faixa de tela ao sender, (2) renegocia o SDP uma única vez por participante, (3) sinaliza o estado AO VIVO e (4) no receptor associa diretamente o `RTCRtpReceiver` reservado ao `MediaStream`. Se nenhum frame chegar em ~2,2 s, o receptor pede automaticamente uma reparação da transmissão. Isso evita o estado infinito “Conectando transmissão…” observado em Chrome/Edge.
+
+
+## Presença nos canais
+A barra lateral agora mostra quem está conectado em Lounge, Jogatina e Foco mesmo quando você está em outro canal, no estilo do Discord. A lista é atualizada automaticamente e não conecta seu áudio com os outros canais.

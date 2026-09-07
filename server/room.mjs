@@ -17,6 +17,38 @@ function cleanAvatar(value) {
 function peerQuery() {
     return "SELECT id,name,CASE WHEN avatar<>'' THEN 1 ELSE 0 END AS hasAvatar,profile_version AS avatarVersion FROM peers WHERE room=? AND seen>?";
 }
+
+export async function PRESENCE(req) {
+    try {
+        const url = new URL(req.url);
+        const space = url.searchParams.get('space') || '';
+        if (!ID.test(space))
+            return Response.json({ error: 'Espaço inválido' }, { status: 400 });
+        const db = database(), now = Date.now();
+        const rows = db.prepare("SELECT id,room,client_key,name,CASE WHEN avatar<>'' THEN 1 ELSE 0 END AS hasAvatar,profile_version AS avatarVersion,seen FROM peers WHERE room LIKE ? AND seen>? ORDER BY seen DESC")
+            .bind(`${space}-%`, now - 30000).execute().results;
+        // Ao trocar de canal, o leave antigo pode levar alguns ms para chegar.
+        // Dedupe por client_key evita a mesma aba aparecer em dois canais ao mesmo tempo.
+        const clients = new Set();
+        const peers = [];
+        for (const row of rows) {
+            const key = row.client_key || row.id;
+            if (clients.has(key)) continue;
+            clients.add(key);
+            const prefix = `${space}-`;
+            if (!String(row.room).startsWith(prefix)) continue;
+            const channel = String(row.room).slice(prefix.length);
+            if (!channel || channel.length > 40) continue;
+            peers.push({ id: row.id, name: row.name, channel, hasAvatar: row.hasAvatar, avatarVersion: row.avatarVersion });
+        }
+        return Response.json({ peers }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+    catch (error) {
+        console.error('Presence request failed:', error);
+        return Response.json({ error: 'Não foi possível carregar quem está nas calls.' }, { status: 500 });
+    }
+}
+
 export async function POST(req) {
     try {
         if (req.headers.get('origin') !== new URL(req.url).origin)

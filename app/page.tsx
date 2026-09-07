@@ -22,6 +22,7 @@ import {useCall,type ShareQuality} from './use-call';
 type Sensitivity='low'|'normal'|'high';
 type SettingsTab='audio'|'stream'|'profile'|'appearance';
 type AudioDevice={deviceId:string;label:string};
+type PresencePerson={id:string;name:string;channel:string;hasAvatar:number|boolean;avatarVersion:number};
 
 let activityContext:AudioContext|null=null;
 
@@ -160,6 +161,7 @@ export default function Home(){
   const [inputDevices,setInputDevices]=useState<AudioDevice[]>([]);
   const [outputDevices,setOutputDevices]=useState<AudioDevice[]>([]);
   const [outputDeviceId,setOutputDeviceId]=useState('');
+  const [channelPresence,setChannelPresence]=useState<Record<string,PresencePerson[]>>({});
   const mutedBeforeDeafen=useRef(false);
   const photoInput=useRef<HTMLInputElement>(null);
   const call=useCall(channel);
@@ -195,9 +197,37 @@ export default function Home(){
     return()=>{active=false;navigator.mediaDevices?.removeEventListener?.('devicechange',refresh);};
   },[call.joined]);
 
+
+  useEffect(()=>{
+    if(!call.space)return;
+    let active=true,timer=0;
+    const refresh=async()=>{
+      try{
+        const response=await fetch(`/api/presence?space=${encodeURIComponent(call.space)}`,{cache:'no-store'});
+        const data=await response.json();
+        if(active&&response.ok&&Array.isArray(data.peers)){
+          const next:Record<string,PresencePerson[]>={};
+          for(const person of data.peers as PresencePerson[]){
+            if(!['Lounge','Jogatina','Foco'].includes(person.channel))continue;
+            (next[person.channel]??=[]).push(person);
+          }
+          setChannelPresence(next);
+        }
+      }catch{}finally{
+        if(active)timer=window.setTimeout(refresh,1600);
+      }
+    };
+    void refresh();
+    return()=>{active=false;if(timer)window.clearTimeout(timer);};
+  },[call.space]);
+
   const markSpeaking=(id:string,value:boolean)=>setSpeaking(old=>old[id]===value?old:{...old,[id]:value});
   const remoteScreens=call.people.filter(person=>person.id!==call.self&&call.remoteSharing[person.id]);
   const filteredChannels=['Lounge','Jogatina','Foco'].filter(item=>item.toLowerCase().includes(channelSearch.toLowerCase()));
+  const peopleInChannel=(item:string)=>{
+    if(call.joined&&channel===item)return call.people.map(person=>({...person,channel:item}));
+    return channelPresence[item]||[];
+  };
   const supportsOutputSelection=typeof HTMLMediaElement!=='undefined'&&'setSinkId' in HTMLMediaElement.prototype;
 
   async function choosePhoto(file?:File){
@@ -261,12 +291,23 @@ export default function Home(){
         <div className="text-channel unavailable"><span>#</span> geral <small>em breve</small></div>
         <div className="text-channel unavailable"><span>#</span> avisos <small>em breve</small></div>
         <div className="category voice-category"><span>CANAIS DE VOZ</span><b>+</b></div>
-        {filteredChannels.map(item=><div key={item}>
-          <button type="button" className={'voice-channel '+(channel===item?'active':'')} onClick={()=>void switchChannel(item)}>
-            <Volume2 size={18}/><span>{item}</span>{call.joined&&channel===item&&<i className="voice-live-dot"/>}
-          </button>
-          {call.joined&&channel===item&&<div className="channel-users">{call.people.map(person=><div className={'channel-user '+(speaking[person.id]?'speaking':'')} key={person.id}><Avatar src={call.avatars[person.id]} name={person.name} className="mini-avatar"/><span>{person.name}</span>{person.id===call.self&&call.muted?<MicOff size={13}/>:speaking[person.id]?<AudioLines size={13}/>:null}</div>)}</div>}
-        </div>)}
+        {filteredChannels.map(item=>{
+          const channelPeople=peopleInChannel(item);
+          return <div key={item}>
+            <button type="button" className={'voice-channel '+(channel===item?'active':'')} onClick={()=>void switchChannel(item)}>
+              <Volume2 size={18}/><span>{item}</span>{channelPeople.length>0&&<><small className="channel-count">{channelPeople.length}</small><i className="voice-live-dot"/></>}
+            </button>
+            {channelPeople.length>0&&<div className="channel-users">{channelPeople.map(person=>{
+              const inCurrentCall=call.joined&&channel===item;
+              const isSpeaking=inCurrentCall&&Boolean(speaking[person.id]);
+              return <div className={'channel-user '+(isSpeaking?'speaking':'')} key={person.id} title={`${person.name} está em ${item}`}>
+                <Avatar src={inCurrentCall?call.avatars[person.id]:undefined} name={person.name} className="mini-avatar"/>
+                <span>{person.name}</span>
+                {inCurrentCall&&person.id===call.self&&call.muted?<MicOff size={13}/>:isSpeaking?<AudioLines size={13}/>:<i className="channel-user-online"/>}
+              </div>;
+            })}</div>}
+          </div>;
+        })}
       </div>
 
       {call.joined&&<div className="voice-connected-panel">

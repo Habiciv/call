@@ -538,5 +538,5 @@ export function useCall(channel:string){
   try{await navigator.clipboard.writeText(location.href);setError('Link copiado! Envie para sua galera entrar na mesma sala.')}catch{setError('Não consegui copiar automaticamente. Copie o endereço completo da barra do navegador.')}
  }
 
- return {people,streams,screenStreams,remoteSharing,remoteShareAudio,avatars,joined,busy,error,muted,sharing,screen,localStream,shareAudio,shareQuality,peerStates,turnConfigured,inputDeviceId,voiceProcessing,join,leave,toggleMute,share,setShareQuality,invite,updateProfile,repairAudio,switchMicrophone,setVoiceProcessing,self:session.current?.id};
+ return {people,streams,screenStreams,remoteSharing,remoteShareAudio,avatars,joined,busy,error,muted,sharing,screen,localStream,shareAudio,shareQuality,peerStates,turnConfigured,inputDeviceId,voiceProcessing,space,join,leave,toggleMute,share,setShareQuality,invite,updateProfile,repairAudio,switchMicrophone,setVoiceProcessing,self:session.current?.id};
 }
