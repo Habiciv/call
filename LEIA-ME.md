@@ -115,3 +115,12 @@ A barra lateral agora mostra quem está conectado em Lounge, Jogatina e Foco mes
 
 ## Correção de múltiplas janelas
 Esta versão detecta quando Edge/Chrome duplica o `sessionStorage` ao duplicar uma aba/janela. Cada janela ativa passa a receber um identificador próprio, enquanto um simples recarregamento mantém a identidade para não duplicar o perfil no servidor.
+
+
+## Novidades desta versão
+- Chat em tempo real por canal de voz, com histórico curto salvo no SQLite.
+- Presets de transmissão de 540p até 4K/30 FPS.
+- 4K é adaptativo: com vários participantes o bitrate/resolução cai automaticamente para priorizar áudio e fluidez.
+- TURN continua recomendado para redes restritas.
+
+> Observação: a call atual usa WebRTC mesh (cada participante envia uma cópia para cada pessoa). 4K funciona melhor com 2 pessoas e boa conexão; para grupos grandes, um SFU é a arquitetura ideal.

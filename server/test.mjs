@@ -38,6 +38,8 @@ test('health, capacity, signaling, profile/avatar, and participant token',async(
   assert.equal((await call(sameRoomA,'join',{name:'Zen',clientKey:crypto.randomUUID()})).status,200);
   const sameRoomJoin=await call(sameRoomB,'join',{name:'John',clientKey:crypto.randomUUID()});assert.equal(sameRoomJoin.status,200);assert.equal(sameRoomJoin.data.peers.length,2);
   const sameRoomPoll=await call(sameRoomA,'poll');assert.equal(sameRoomPoll.status,200);assert.equal(sameRoomPoll.data.peers.length,2);
+  const chatSend=await call(sameRoomA,'chat',{message:'oi do chat'});assert.equal(chatSend.status,200);assert.ok(chatSend.data.messages.some(m=>m.body==='oi do chat'&&m.name==='Zen'));
+  const chatPoll=await call(sameRoomB,'poll',{chatAfter:0});assert.equal(chatPoll.status,200);assert.ok(chatPoll.data.messages.some(m=>m.body==='oi do chat'));
   const presenceSpace=crypto.randomUUID(),presenceA={room:presenceSpace+'-Lounge',id:crypto.randomUUID(),token:crypto.randomUUID()},presenceB={room:presenceSpace+'-Jogatina',id:crypto.randomUUID(),token:crypto.randomUUID()};
   assert.equal((await call(presenceA,'join',{name:'Zen',clientKey:crypto.randomUUID()})).status,200);
   assert.equal((await call(presenceB,'join',{name:'John',clientKey:crypto.randomUUID()})).status,200);

@@ -22,6 +22,15 @@ sqlite.exec(`DELETE FROM peers WHERE rowid IN (
 )`);
 sqlite.exec('DROP INDEX IF EXISTS peers_room_client');
 sqlite.exec('CREATE UNIQUE INDEX IF NOT EXISTS peers_room_client ON peers(room,client_key)');
+sqlite.exec(`CREATE TABLE IF NOT EXISTS messages (
+ id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+ room text NOT NULL,
+ sender text NOT NULL,
+ name text NOT NULL,
+ body text NOT NULL,
+ created integer NOT NULL
+)`);
+sqlite.exec('CREATE INDEX IF NOT EXISTS messages_room_id ON messages(room,id)');
 function prepare(sql){let params=[];const stmt=sqlite.prepare(sql);return {bind(...values){params=values;return this},first(){return stmt.get(...params)||null},run(){const r=stmt.run(...params);return {meta:{changes:Number(r.changes)}}},execute(){if(stmt.columns().length)return {results:stmt.all(...params)};this.run();return {results:[]}}}}
 export function database(){return {prepare,batch(statements){sqlite.exec('BEGIN');try{const r=statements.map(s=>s.execute());sqlite.exec('COMMIT');return r}catch(e){sqlite.exec('ROLLBACK');throw e}}}}
 // Signaling é efêmero: remove participantes e ofertas abandonados globalmente.

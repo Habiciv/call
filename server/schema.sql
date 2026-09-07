@@ -21,3 +21,15 @@ CREATE TABLE `signals` (
 );
 --> statement-breakpoint
 CREATE INDEX `signals_room_target` ON `signals` (`room`,`target`,`id`);
+
+--> statement-breakpoint
+CREATE TABLE `messages` (
+  `id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+  `room` text NOT NULL,
+  `sender` text NOT NULL,
+  `name` text NOT NULL,
+  `body` text NOT NULL,
+  `created` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE INDEX `messages_room_id` ON `messages` (`room`,`id`);

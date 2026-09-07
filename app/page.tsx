@@ -16,6 +16,8 @@ import {
   AudioLines,
   Camera,
   Trash2,
+  MessageCircle,
+  Send,
 } from 'lucide-react';
 import {useCall,type ShareQuality} from './use-call';
 
@@ -131,9 +133,11 @@ async function avatarFromFile(file:File){
 }
 
 const qualityInfo:Record<ShareQuality,{label:string;detail:string}>={
-  stable:{label:'Estável',detail:'360p · 20 FPS'},
-  balanced:{label:'Equilibrada',detail:'540p · 20 FPS'},
-  high:{label:'Nítida',detail:'720p · 24 FPS'},
+  stable:{label:'Fluida',detail:'540p · 30 FPS'},
+  balanced:{label:'HD',detail:'720p · 30 FPS'},
+  high:{label:'Full HD',detail:'1080p · 30 FPS'},
+  ultra:{label:'2K',detail:'1440p · 30 FPS'},
+  '4k':{label:'4K',detail:'2160p · 30 FPS · adaptativo'},
 };
 
 const peerStateText={
@@ -156,6 +160,8 @@ export default function Home(){
   const [sensitivity,setSensitivity]=useState<Sensitivity>('normal');
   const [deafened,setDeafened]=useState(false);
   const [memberPanelOpen,setMemberPanelOpen]=useState(true);
+  const [chatOpen,setChatOpen]=useState(false);
+  const [chatText,setChatText]=useState('');
   const [compactMode,setCompactMode]=useState(false);
   const [channelSearch,setChannelSearch]=useState('');
   const [inputDevices,setInputDevices]=useState<AudioDevice[]>([]);
@@ -164,6 +170,7 @@ export default function Home(){
   const [channelPresence,setChannelPresence]=useState<Record<string,PresencePerson[]>>({});
   const mutedBeforeDeafen=useRef(false);
   const photoInput=useRef<HTMLInputElement>(null);
+  const chatEndRef=useRef<HTMLDivElement>(null);
   const call=useCall(channel);
 
   useEffect(()=>{
@@ -181,6 +188,7 @@ export default function Home(){
   useEffect(()=>{try{localStorage.removeItem('voz-master-volume');localStorage.removeItem('voz-screen-volume');localStorage.setItem('voz-sensitivity',sensitivity);localStorage.setItem('voz-output-device',outputDeviceId);localStorage.setItem('voz-compact',compactMode?'1':'0');}catch{}},[sensitivity,outputDeviceId,compactMode]);
   useEffect(()=>{if(!call.joined)setDeafened(false);},[call.joined]);
   useEffect(()=>{if(!settingsOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setSettingsOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[settingsOpen]);
+  useEffect(()=>{if(chatOpen)chatEndRef.current?.scrollIntoView({block:'end'});},[chatOpen,call.messages.length]);
 
   useEffect(()=>{
     let active=true;
@@ -230,6 +238,11 @@ export default function Home(){
   };
   const supportsOutputSelection=typeof HTMLMediaElement!=='undefined'&&'setSinkId' in HTMLMediaElement.prototype;
 
+  async function sendChat(){
+    const text=chatText.trim();if(!text||!call.joined)return;
+    const ok=await call.sendMessage(text);if(ok)setChatText('');
+  }
+
   async function choosePhoto(file?:File){
     if(!file)return;setProfileBusy(true);setProfileMessage('');
     try{
@@ -274,7 +287,7 @@ export default function Home(){
 
   const voiceConnected=call.joined?call.people.filter(p=>p.id!==call.self).every(p=>(call.peerStates[p.id]||'connecting')==='connected'):false;
 
-  return <div className={'discord-shell '+(compactMode?'compact ':'')+(memberPanelOpen?'members-open':'members-closed')}>
+  return <div className={'discord-shell '+(compactMode?'compact ':'')+((memberPanelOpen||chatOpen)?'members-open':'members-closed')+(chatOpen?' chat-open':'')}>
     <aside className="server-rail" aria-label="Espaços">
       <button type="button" className="server-pill home selected" aria-label="Voz"><Radio size={25}/></button>
       <div className="rail-separator"/>
@@ -335,7 +348,8 @@ export default function Home(){
         <div className="channel-title"><Volume2 size={20}/><strong>{channel}</strong><span>Canal de voz</span></div>
         <div className="topbar-actions">
           <button type="button" onClick={call.invite} title="Copiar convite"><Link size={18}/><span>Convidar</span></button>
-          <button type="button" className={memberPanelOpen?'active':''} onClick={()=>setMemberPanelOpen(v=>!v)} title="Mostrar participantes"><Users size={19}/></button>
+          <button type="button" className={chatOpen?'active':''} onClick={()=>setChatOpen(v=>!v)} title="Abrir chat"><MessageCircle size={19}/><span>Chat</span></button>
+          <button type="button" className={memberPanelOpen&&!chatOpen?'active':''} onClick={()=>{setChatOpen(false);setMemberPanelOpen(v=>!v);}} title="Mostrar participantes"><Users size={19}/></button>
           <button type="button" className={settingsOpen?'active':''} onClick={()=>{setSettingsTab('audio');setSettingsOpen(true);}} title="Configurações"><SlidersHorizontal size={19}/></button>
         </div>
       </header>
@@ -395,17 +409,32 @@ export default function Home(){
       </section>
     </main>
 
-    <aside className="member-sidebar" aria-label="Participantes">
-      <div className="member-header"><strong>Participantes</strong><span>{call.joined?call.people.length:0}</span></div>
-      <div className="member-list">
-        <p className="member-category">ONLINE — {call.joined?call.people.length:0}</p>
-        {call.joined?call.people.map(person=>{
-          const isSelf=person.id===call.self,isSpeaking=Boolean(speaking[person.id])&&!(isSelf&&call.muted),peerState=isSelf?'connected':(call.peerStates[person.id]||'connecting');
-          return <div className={'member-item '+(isSpeaking?'speaking':'')} key={person.id}>
-            <div className="member-main"><div className="member-avatar-wrap"><Avatar src={call.avatars[person.id]} name={person.name} className="member-avatar"/><i className={isSpeaking?'speaking':'online'}/></div><div><strong>{person.name}{isSelf?' (você)':''}</strong><small>{isSpeaking?'Falando agora':isSelf?(call.muted?'Microfone desligado':'Conectado'):`${peerStateText[peerState]} no áudio`}</small></div></div>
-          </div>;
-        }):<div className="member-empty"><Users size={28}/><p>Entre na call para ver quem está online.</p></div>}
-      </div>
+    <aside className="member-sidebar" aria-label={chatOpen?'Chat':'Participantes'}>
+      {chatOpen?<>
+        <div className="member-header chat-header"><strong># chat · {channel}</strong><span>{call.messages.length}</span></div>
+        <div className="chat-list">
+          {call.joined&&call.messages.length?call.messages.map(msg=><div className={'chat-message '+(msg.sender===call.self?'mine':'')} key={msg.id}>
+            <div className="chat-message-avatar">{(msg.name||'V').slice(0,2).toUpperCase()}</div>
+            <div className="chat-message-body"><div><strong>{msg.name}</strong><time>{new Date(msg.created).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</time></div><p>{msg.body}</p></div>
+          </div>):<div className="member-empty"><MessageCircle size={30}/><p>{call.joined?'Ainda não tem mensagens. Manda a primeira!':'Entre na call para usar o chat do canal.'}</p></div>}
+          <div ref={chatEndRef}/>
+        </div>
+        <form className="chat-compose" onSubmit={e=>{e.preventDefault();void sendChat();}}>
+          <input value={chatText} disabled={!call.joined} maxLength={1000} onChange={e=>setChatText(e.target.value)} placeholder={call.joined?`Mensagem em #${channel}`:'Entre na call para conversar'}/>
+          <button type="submit" disabled={!call.joined||!chatText.trim()} aria-label="Enviar mensagem"><Send size={17}/></button>
+        </form>
+      </>:<>
+        <div className="member-header"><strong>Participantes</strong><span>{call.joined?call.people.length:0}</span></div>
+        <div className="member-list">
+          <p className="member-category">ONLINE — {call.joined?call.people.length:0}</p>
+          {call.joined?call.people.map(person=>{
+            const isSelf=person.id===call.self,isSpeaking=Boolean(speaking[person.id])&&!(isSelf&&call.muted),peerState=isSelf?'connected':(call.peerStates[person.id]||'connecting');
+            return <div className={'member-item '+(isSpeaking?'speaking':'')} key={person.id}>
+              <div className="member-main"><div className="member-avatar-wrap"><Avatar src={call.avatars[person.id]} name={person.name} className="member-avatar"/><i className={isSpeaking?'speaking':'online'}/></div><div><strong>{person.name}{isSelf?' (você)':''}</strong><small>{isSpeaking?'Falando agora':isSelf?(call.muted?'Microfone desligado':'Conectado'):`${peerStateText[peerState]} no áudio`}</small></div></div>
+            </div>;
+          }):<div className="member-empty"><Users size={28}/><p>Entre na call para ver quem está online.</p></div>}
+        </div>
+      </>}
     </aside>
 
     {settingsOpen&&<div className="settings-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setSettingsOpen(false);}}>
@@ -432,7 +461,7 @@ export default function Home(){
           {settingsTab==='stream'&&<>
             <h2>Transmissão</h2><p className="settings-description">Qualidade adaptativa para manter a tela fluida sem atrapalhar o áudio.</p>
             <div className="setting-block"><label>QUALIDADE</label><div className="quality-grid">{(Object.keys(qualityInfo) as ShareQuality[]).map(value=><button type="button" className={call.shareQuality===value?'selected':''} key={value} onClick={()=>void call.setShareQuality(value)}><strong>{qualityInfo[value].label}</strong><span>{qualityInfo[value].detail}</span></button>)}</div></div>
-            <div className="setting-card"><div><strong>Compartilhar áudio da aba</strong><small>Ao escolher uma aba ou tela no Chrome/Edge, marque “Compartilhar áudio” quando essa opção aparecer.</small></div></div>
+            <div className="setting-card"><div><strong>4K adaptativo</strong><small>4K é liberado quando a tela e a rede suportam. Com mais participantes, o site reduz bitrate/resolução automaticamente para preservar fluidez e áudio.</small></div></div><div className="setting-card"><div><strong>Compartilhar áudio da aba</strong><small>Ao escolher uma aba ou tela no Chrome/Edge, marque “Compartilhar áudio” quando essa opção aparecer.</small></div></div>
           </>}
 
           {settingsTab==='profile'&&<>
