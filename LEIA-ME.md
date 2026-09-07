@@ -82,3 +82,13 @@ pnpm test
 ```
 
 O teste cobre health check, capacidade da sala, autenticação por token, sinalização, perfil/avatar, reconexão sem perfil duplicado e configuração TURN.
+
+
+## Correção de canais / entrada
+- Clique em qualquer canal de voz para entrar diretamente.
+- Trocar de canal enquanto conectado move a sessão para o novo canal.
+- Bloqueio imediato contra JOIN duplicado.
+- Migração segura remove presenças duplicadas antigas antes do índice único.
+- JOIN idempotente evita erro 500 em cliques/requisições concorrentes.
+
+- Corrigido conflito de build: o Railway não sobrescreve mais `server/room.mjs` com uma versão antiga de `room.ts`.

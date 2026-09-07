@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build && node server/build.mjs",
+    "build": "vite build",
     "start": "node server/index.mjs",
     "test": "node --test server/test.mjs"
   },

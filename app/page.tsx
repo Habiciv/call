@@ -214,9 +214,15 @@ export default function Home(){
     if(call.joined){setProfileBusy(true);const ok=await call.updateProfile(name,'');setProfileBusy(false);if(ok)setProfileMessage('Foto removida.');}
   }
 
-  function switchChannel(next:string){
-    if(next===channel)return;
-    call.leave();setSpeaking({});setDeafened(false);setChannel(next);
+  async function switchChannel(next:string){
+    if(call.busy)return;
+    // Como no Discord: clicar em um canal de voz entra nele. Se já estiver em
+    // outro canal, sai da presença antiga e conecta direto no novo.
+    if(call.joined&&next===channel)return;
+    if(call.joined)call.leave();
+    setSpeaking({});setDeafened(false);setChannel(next);
+    await unlockRoomAudio();
+    await call.join(name,avatar,next);
   }
 
   function toggleDeafen(){
@@ -256,7 +262,7 @@ export default function Home(){
         <div className="text-channel unavailable"><span>#</span> avisos <small>em breve</small></div>
         <div className="category voice-category"><span>CANAIS DE VOZ</span><b>+</b></div>
         {filteredChannels.map(item=><div key={item}>
-          <button type="button" className={'voice-channel '+(channel===item?'active':'')} onClick={()=>switchChannel(item)}>
+          <button type="button" className={'voice-channel '+(channel===item?'active':'')} onClick={()=>void switchChannel(item)}>
             <Volume2 size={18}/><span>{item}</span>{call.joined&&channel===item&&<i className="voice-live-dot"/>}
           </button>
           {call.joined&&channel===item&&<div className="channel-users">{call.people.map(person=><div className={'channel-user '+(speaking[person.id]?'speaking':'')} key={person.id}><Avatar src={call.avatars[person.id]} name={person.name} className="mini-avatar"/><span>{person.name}</span>{person.id===call.self&&call.muted?<MicOff size={13}/>:speaking[person.id]?<AudioLines size={13}/>:null}</div>)}</div>}

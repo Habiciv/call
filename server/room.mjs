@@ -36,7 +36,10 @@ export async function POST(req) {
             // O client_key identifica esta aba e remove a presença antiga antes do novo join.
             await db.prepare('DELETE FROM signals WHERE room=? AND (sender IN (SELECT id FROM peers WHERE room=? AND client_key=? AND id<>?) OR target IN (SELECT id FROM peers WHERE room=? AND client_key=? AND id<>?))').bind(room, room, safeClientKey, id, room, safeClientKey, id).run();
             await db.prepare('DELETE FROM peers WHERE room=? AND client_key=? AND id<>?').bind(room, safeClientKey, id).run();
-            const inserted = await db.prepare('INSERT INTO peers(id,room,token,client_key,name,avatar,profile_version,seen) SELECT ?,?,?,?,?,?,?,? WHERE (SELECT count(*) FROM peers WHERE room=? AND seen>?) < 10').bind(id, room, token, safeClientKey, cleanName(name), safeAvatar, 1, now, room, now - 30000).run();
+            // OR REPLACE torna o JOIN idempotente para o mesmo navegador.
+            // Mesmo se duas requisições chegarem quase juntas, não estoura o
+            // índice único nem devolve erro 500 para o usuário.
+            const inserted = await db.prepare('INSERT OR REPLACE INTO peers(id,room,token,client_key,name,avatar,profile_version,seen) SELECT ?,?,?,?,?,?,?,? WHERE (SELECT count(*) FROM peers WHERE room=? AND seen>?) < 10').bind(id, room, token, safeClientKey, cleanName(name), safeAvatar, 1, now, room, now - 30000).run();
             if (!inserted.meta.changes)
                 return Response.json({ error: 'Sala cheia. O limite é de 10 pessoas.' }, { status: 409 });
         }
@@ -83,6 +86,7 @@ export async function POST(req) {
     catch (error) {
         if (error instanceof Error && error.message === 'AVATAR_INVALID')
             return Response.json({ error: 'A foto de perfil é inválida ou ficou grande demais.' }, { status: 400 });
+        console.error('Room request failed:', error);
         return Response.json({ error: 'Não foi possível conectar à sala. Tente novamente.' }, { status: 500 });
     }
 }

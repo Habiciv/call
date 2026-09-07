@@ -23,19 +23,22 @@ export async function POST(req:Request){
   if(req.headers.get('origin')!==new URL(req.url).origin)return Response.json({error:'Origem inválida'},{status:403});
   const body=await req.text();
   if(body.length>40000)return Response.json({error:'Dados muito grandes'},{status:413});
-  const {action,room,id,token,name,avatar,target,data,after}=JSON.parse(body);
+  const {action,room,id,token,clientKey,name,avatar,target,data,after}=JSON.parse(body);
   if(!ROOM.test(room||'')||!ID.test(id||'')||!ID.test(token||''))return Response.json({error:'Sala inválida'},{status:400});
   if(!['join','poll','leave','signal','profile','avatar'].includes(action))return Response.json({error:'Ação inválida'},{status:400});
   const db=database(),now=Date.now();
 
   if(action==='join'){
-   const safeAvatar=cleanAvatar(avatar);
-   const inserted=await db.prepare('INSERT INTO peers(id,room,token,name,avatar,profile_version,seen) SELECT ?,?,?,?,?,?,? WHERE (SELECT count(*) FROM peers WHERE room=? AND seen>?) < 10')
-    .bind(id,room,token,cleanName(name),safeAvatar,1,now,room,now-30000).run();
+   const safeAvatar=cleanAvatar(avatar),safeClientKey=ID.test(clientKey||'')?clientKey:id;
+   await db.prepare('DELETE FROM signals WHERE room=? AND (sender IN (SELECT id FROM peers WHERE room=? AND client_key=? AND id<>?) OR target IN (SELECT id FROM peers WHERE room=? AND client_key=? AND id<>?))')
+    .bind(room,room,safeClientKey,id,room,safeClientKey,id).run();
+   await db.prepare('DELETE FROM peers WHERE room=? AND client_key=? AND id<>?').bind(room,safeClientKey,id).run();
+   const inserted=await db.prepare('INSERT OR REPLACE INTO peers(id,room,token,client_key,name,avatar,profile_version,seen) SELECT ?,?,?,?,?,?,?,? WHERE (SELECT count(*) FROM peers WHERE room=? AND seen>?) < 10')
+    .bind(id,room,token,safeClientKey,cleanName(name),safeAvatar,1,now,room,now-30000).run();
    if(!inserted.meta.changes)return Response.json({error:'Sala cheia. O limite é de 10 pessoas.'},{status:409});
   }else{
-   const p=await db.prepare('SELECT id FROM peers WHERE id=? AND room=? AND token=?').bind(id,room,token).first();
-   if(!p)return Response.json({error:'Sua conexão expirou. Entre novamente.'},{status:401});
+   const person=await db.prepare('SELECT id FROM peers WHERE id=? AND room=? AND token=?').bind(id,room,token).first();
+   if(!person)return Response.json({error:'Sua conexão expirou. Entre novamente.'},{status:401});
 
    if(action==='leave'){
     await db.prepare('DELETE FROM peers WHERE id=? AND token=?').bind(id,token).run();
@@ -72,6 +75,7 @@ export async function POST(req:Request){
   return Response.json({peers:results[0].results,signals:results[1].results},{headers:{'Cache-Control':'no-store'}});
  }catch(error){
   if(error instanceof Error&&error.message==='AVATAR_INVALID')return Response.json({error:'A foto de perfil é inválida ou ficou grande demais.'},{status:400});
+  console.error('Room request failed:',error);
   return Response.json({error:'Não foi possível conectar à sala. Tente novamente.'},{status:500});
  }
 }

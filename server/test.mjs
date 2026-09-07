@@ -29,5 +29,10 @@ test('health, capacity, signaling, profile/avatar, and participant token',async(
   assert.equal((await call(first,'join',{name:'Mesmo navegador',clientKey})).status,200);
   const secondJoin=await call(second,'join',{name:'Mesmo navegador',clientKey});assert.equal(secondJoin.status,200);assert.equal(secondJoin.data.peers.length,1);assert.equal(secondJoin.data.peers[0].id,second.id);
   assert.equal((await call(first,'poll')).status,401);
+  const room3=crypto.randomUUID()+'-Lounge',rapidClient=crypto.randomUUID();
+  const rapidA={room:room3,id:crypto.randomUUID(),token:crypto.randomUUID()},rapidB={room:room3,id:crypto.randomUUID(),token:crypto.randomUUID()};
+  const rapid=await Promise.all([call(rapidA,'join',{name:'Clique rápido',clientKey:rapidClient}),call(rapidB,'join',{name:'Clique rápido',clientKey:rapidClient})]);
+  assert.ok(rapid.every(result=>result.status===200),'rapid duplicate joins must not return 500');
+  const rapidPeers=rapid[rapid.length-1].data.peers;assert.equal(rapidPeers.length,1);
  }finally{if(child.exitCode===null){const stopped=new Promise(r=>child.once('exit',r));child.kill();await stopped;}await rm(data,{recursive:true,force:true})}
 });
