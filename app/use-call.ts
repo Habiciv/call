@@ -33,7 +33,7 @@ function preferOpus(transceiver:RTCRtpTransceiver){
 
 export function useCall(channel:string){
  const [people,setPeople]=useState<Person[]>([]),[streams,setStreams]=useState<Record<string,MediaStream>>({}),[screenStreams,setScreenStreams]=useState<Record<string,MediaStream>>({}),[remoteSharing,setRemoteSharing]=useState<Record<string,boolean>>({}),[remoteShareAudio,setRemoteShareAudio]=useState<Record<string,boolean>>({}),[avatars,setAvatars]=useState<Record<string,string>>({}),[joined,setJoined]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[muted,setMuted]=useState(false),[sharing,setSharing]=useState(false),[screen,setScreen]=useState<MediaStream|null>(null),[localStream,setLocalStream]=useState<MediaStream|null>(null),[space,setSpace]=useState(''),[shareQuality,setShareQualityState]=useState<ShareQuality>('balanced'),[shareAudio,setShareAudio]=useState(false),[peerStates,setPeerStates]=useState<Record<string,PeerState>>({}),[turnConfigured,setTurnConfigured]=useState(false),[inputDeviceId,setInputDeviceId]=useState(''),[voiceProcessing,setVoiceProcessingState]=useState(true);
- const session=useRef<Session|null>(null),mic=useRef<MediaStream|null>(null),display=useRef<MediaStream|null>(null),connections=useRef<Record<string,RTCPeerConnection>>({}),pending=useRef<Record<string,RTCIceCandidateInit[]>>({}),iceServers=useRef<IceServer[]>(FALLBACK_ICE),restartTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),watchdogTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),screenVideoSenders=useRef<Record<string,RTCRtpSender>>({}),screenAudioSenders=useRef<Record<string,RTCRtpSender>>({}),screenVideoReceivers=useRef<Record<string,RTCRtpReceiver>>({}),screenReady=useRef<Record<string,boolean>>({}),shareRepairTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),voiceSenders=useRef<Record<string,RTCRtpSender>>({}),shareQualityRef=useRef<ShareQuality>('balanced'),avatarVersions=useRef<Record<string,number>>({}),avatarLoading=useRef<Set<string>>(new Set()),offerLocks=useRef<Record<string,boolean>>({}),repairRequested=useRef<Record<string,number>>({}),mutedRef=useRef(false),micRecovering=useRef(false),inputDeviceRef=useRef(''),voiceProcessingRef=useRef(true),clientKeyRef=useRef(''),lastTunedPeerCount=useRef(-1),joinLock=useRef(false);
+ const session=useRef<Session|null>(null),mic=useRef<MediaStream|null>(null),display=useRef<MediaStream|null>(null),connections=useRef<Record<string,RTCPeerConnection>>({}),pending=useRef<Record<string,RTCIceCandidateInit[]>>({}),iceServers=useRef<IceServer[]>(FALLBACK_ICE),restartTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),watchdogTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),screenVideoSenders=useRef<Record<string,RTCRtpSender>>({}),screenAudioSenders=useRef<Record<string,RTCRtpSender>>({}),screenVideoReceivers=useRef<Record<string,RTCRtpReceiver>>({}),screenReady=useRef<Record<string,boolean>>({}),shareRepairTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),voiceSenders=useRef<Record<string,RTCRtpSender>>({}),screenAttachJobs=useRef<Record<string,Promise<void>>>({}),shareQualityRef=useRef<ShareQuality>('balanced'),avatarVersions=useRef<Record<string,number>>({}),avatarLoading=useRef<Set<string>>(new Set()),offerLocks=useRef<Record<string,boolean>>({}),repairRequested=useRef<Record<string,number>>({}),mutedRef=useRef(false),micRecovering=useRef(false),inputDeviceRef=useRef(''),voiceProcessingRef=useRef(true),clientKeyRef=useRef(''),lastTunedPeerCount=useRef(-1),joinLock=useRef(false);
 
  useEffect(()=>{
   let key=location.hash.slice(1);
@@ -66,7 +66,7 @@ export function useCall(channel:string){
  function dropConnection(id:string){
   clearPeerTimer(id);
   try{connections.current[id]?.close()}catch{}
-  delete connections.current[id];delete pending.current[id];delete screenVideoSenders.current[id];delete screenAudioSenders.current[id];delete screenVideoReceivers.current[id];delete screenReady.current[id];delete voiceSenders.current[id];delete offerLocks.current[id];delete repairRequested.current[id];
+  delete connections.current[id];delete pending.current[id];delete screenVideoSenders.current[id];delete screenAudioSenders.current[id];delete screenVideoReceivers.current[id];delete screenReady.current[id];delete voiceSenders.current[id];delete screenAttachJobs.current[id];delete offerLocks.current[id];delete repairRequested.current[id];
  }
 
  function cleanup(){
@@ -74,7 +74,7 @@ export function useCall(channel:string){
   mic.current?.getTracks().forEach(t=>t.stop());
   display.current?.getTracks().forEach(t=>t.stop());
   Object.keys(connections.current).forEach(dropConnection);
-  connections.current={};pending.current={};screenVideoSenders.current={};screenAudioSenders.current={};screenVideoReceivers.current={};screenReady.current={};shareRepairTimers.current={};voiceSenders.current={};mic.current=null;display.current=null;avatarLoading.current.clear();avatarVersions.current={};offerLocks.current={};repairRequested.current={};mutedRef.current=false;micRecovering.current=false;lastTunedPeerCount.current=-1;
+  connections.current={};pending.current={};screenVideoSenders.current={};screenAudioSenders.current={};screenVideoReceivers.current={};screenReady.current={};shareRepairTimers.current={};voiceSenders.current={};screenAttachJobs.current={};mic.current=null;display.current=null;avatarLoading.current.clear();avatarVersions.current={};offerLocks.current={};repairRequested.current={};mutedRef.current=false;micRecovering.current=false;lastTunedPeerCount.current=-1;
  }
 
  async function request(action:string,extra:any={},s=session.current){
@@ -139,6 +139,9 @@ export function useCall(channel:string){
   if(!p||session.current!==s||p.signalingState==='closed'||p.signalingState!=='stable'||offerLocks.current[id])return;
   offerLocks.current[id]=true;
   try{
+   if(screenAttachJobs.current[id]){
+    try{await screenAttachJobs.current[id]}catch{}
+   }
    if(restart)try{p.restartIce()}catch{}
    const offer=await p.createOffer({iceRestart:restart});
    if(session.current!==s||p.signalingState!=='stable')return;
@@ -220,6 +223,19 @@ export function useCall(channel:string){
   track.onended=()=>{if(session.current===s)void recoverMicrophone(s)};
  }
 
+ async function attachCurrentShareToPeer(id:string,s:Session){
+  const stream=display.current;
+  const videoSender=screenVideoSenders.current[id],audioSender=screenAudioSenders.current[id];
+  if(!stream||!videoSender||!audioSender)return;
+  const videoTrack=stream.getVideoTracks()[0],audioTrack=stream.getAudioTracks()[0]||null;
+  if(videoTrack){
+   await videoSender.replaceTrack(videoTrack);
+   await tuneVideo(videoSender);
+  }
+  await audioSender.replaceTrack(audioTrack);
+  if(audioTrack)await tuneShareAudio(audioSender);
+ }
+
  async function acquireMicrophone(deviceId=inputDeviceRef.current){
   const processing=voiceProcessingRef.current;
   const preferred={
@@ -265,9 +281,11 @@ export function useCall(channel:string){
   const voice=audioTrack?p.addTransceiver(audioTrack,{direction:'sendrecv'}):p.addTransceiver('audio',{direction:'sendrecv'});preferOpus(voice);voiceSenders.current[id]=voice.sender;if(audioTrack)void tuneAudio(voice.sender);
   const video=p.addTransceiver('video',{direction:'sendrecv'});screenVideoSenders.current[id]=video.sender;screenVideoReceivers.current[id]=video.receiver;screenReady.current[id]=false;
   const sharedAudio=p.addTransceiver('audio',{direction:'sendrecv'});preferOpus(sharedAudio);screenAudioSenders.current[id]=sharedAudio.sender;
-  const displayVideo=display.current?.getVideoTracks()[0],displayAudio=display.current?.getAudioTracks()[0];
-  if(displayVideo){void video.sender.replaceTrack(displayVideo).then(()=>tuneVideo(video.sender))}
-  if(displayAudio){void sharedAudio.sender.replaceTrack(displayAudio).then(()=>tuneShareAudio(sharedAudio.sender))}
+  if(display.current){
+   screenAttachJobs.current[id]=(async()=>{
+    try{await attachCurrentShareToPeer(id,s)}finally{delete screenAttachJobs.current[id]}
+   })();
+  }
 
   p.onicecandidate=e=>{if(e.candidate)void request('signal',{target:id,data:{candidate:e.candidate.toJSON()}},s).catch(e=>{if(session.current===s)setError(e.message)})};
   // Cada conexão possui 3 receptores: voz, vídeo da tela e áudio da tela.
@@ -321,7 +339,16 @@ export function useCall(channel:string){
     if(session.current===s)setError(turnConfigured?'A conexão de áudio falhou e está tentando novamente pelo TURN…':'A conexão de áudio falhou. Configure o TURN no Railway para redes bloqueadas.');
    }
   };
-  if(display.current){queueMicrotask(()=>{if(session.current===s&&display.current)void request('signal',{target:id,data:{media:{sharing:true,shareAudio:Boolean(display.current.getAudioTracks()[0])}}},s).catch(()=>{})})}
+  if(display.current){
+   queueMicrotask(async()=>{
+    if(session.current!==s||!display.current)return;
+    try{
+     if(screenAttachJobs.current[id])await screenAttachJobs.current[id];
+     if(connections.current[id]===p)await renegotiateSharePeer(id,s);
+     await request('signal',{target:id,data:{media:{sharing:true,shareAudio:Boolean(display.current?.getAudioTracks()[0])}}},s).catch(()=>{});
+    }catch{}
+   });
+  }
   scheduleWatchdog(id,s);
   return p;
  }
