@@ -10,7 +10,7 @@
 /* Crimson room: dark surfaces, red light, and gentle movement. */
 :root,.dark{--primary:#ff4057;--sidebar-ring:#ff4057;--border:#2e1b23;--ring:#ff4057}
 .workspace{background:radial-gradient(ellipse at 95% 0%,#62192b25,transparent 50%),#0b0b0e;min-height:100svh}
-header{background:#0b0b0ed9;backdrop-filter:blur(16px)}
+header{background:#0b0b0ef2}
 h1{letter-spacing:-.055em;font-weight:750}h1 span{text-shadow:0 0 28px #ff405780}.brand svg{filter:drop-shadow(0 0 9px #ff405755)}
 .room{position:relative;isolation:isolate}.room>.eyebrow,.room>h1,.room>p{animation:rise-in .7s cubic-bezier(.16,1,.3,1) both}.room>h1{animation-delay:.07s}.room>p{animation-delay:.14s}
 .empty-stage{position:relative;isolation:isolate;overflow:hidden;box-shadow:0 20px 70px #0005,inset 0 1px #ff8ea918;animation:rise-in .85s cubic-bezier(.16,1,.3,1) .17s both}
@@ -22,7 +22,7 @@ h1{letter-spacing:-.055em;font-weight:750}h1 span{text-shadow:0 0 28px #ff405780
 .primary:hover:before{transform:translateX(65%)}.primary:hover{transform:translateY(-3px);box-shadow:0 10px 30px #f02b4740}.primary:active{transform:translateY(0)}
 .channel{transition:background .22s,color .22s,transform .22s}.channel:hover{background:#ff405710;transform:translateX(3px)}.channel.selected{box-shadow:inset 3px 0 #ff4057;color:#ff8a9b}
 .people-grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}.person{background:linear-gradient(155deg,#25181f,#141116);border-color:#3c2530;animation:rise-in .5s cubic-bezier(.16,1,.3,1) both;transition:transform .25s,border-color .25s,box-shadow .25s}.person:hover{transform:translateY(-3px);border-color:#9d3852;box-shadow:0 12px 30px #0004}.person.self{box-shadow:inset 0 1px #ff405722,0 0 28px #ff405709}.avatar{box-shadow:0 0 0 8px #ff405709;background:linear-gradient(140deg,#ba3452,#64192f)}.avatar.color-1,.avatar.color-4,.avatar.color-7{background:linear-gradient(140deg,#a0405c,#491b30)}.avatar.color-2,.avatar.color-5,.avatar.color-8{background:linear-gradient(140deg,#dd5263,#7e263f)}
-.status i,.live-dot{box-shadow:0 0 0 4px #ff405710;animation:live-glow 2.8s ease-in-out infinite}.screen-wrap{animation:rise-in .45s ease-out;background:#170d12}.call-controls{position:sticky;bottom:10px;width:fit-content;max-width:100%;margin:18px auto 0;padding:12px;border:1px solid #4a2533;border-radius:18px;background:#140e13e8;backdrop-filter:blur(20px);box-shadow:0 15px 45px #0007;z-index:5;animation:rise-in .5s ease-out}.call-controls button{background:#30202a;transition:transform .2s,background .2s}.call-controls button:hover{transform:translateY(-3px)}.call-controls button.active{background:#c91d3e}.call-controls button.hangup{background:#e62d4b}.waiting{border-color:#4a2635}.invite:hover{border-color:#ee405c;background:#ff405710}.notice{animation:rise-in .3s ease-out}
+.status i,.live-dot{box-shadow:0 0 0 4px #ff405710;animation:live-glow 2.8s ease-in-out infinite}.screen-wrap{animation:rise-in .45s ease-out;background:#170d12}.call-controls{position:sticky;bottom:10px;width:fit-content;max-width:100%;margin:18px auto 0;padding:12px;border:1px solid #4a2533;border-radius:18px;background:#140e13f5;box-shadow:0 15px 45px #0007;z-index:5;animation:rise-in .5s ease-out}.call-controls button{background:#30202a;transition:transform .2s,background .2s}.call-controls button:hover{transform:translateY(-3px)}.call-controls button.active{background:#c91d3e}.call-controls button.hangup{background:#e62d4b}.waiting{border-color:#4a2635}.invite:hover{border-color:#ee405c;background:#ff405710}.notice{animation:rise-in .3s ease-out}
 @keyframes rise-in{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
 @keyframes float-soft{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
 @keyframes red-drift{from{transform:translate(-4%,-3%) scale(1)}to{transform:translate(8%,5%) scale(1.15)}}
@@ -32,10 +32,10 @@ h1{letter-spacing:-.055em;font-weight:750}h1 span{text-shadow:0 0 28px #ff405780
 
 /* Interactive liquid-red background. */
 .workspace{position:relative;overflow:hidden}
-.liquid-fx-canvas{position:absolute;inset:0;z-index:0;width:100%;height:100%;pointer-events:none;opacity:.9;mix-blend-mode:screen}
+.liquid-fx-canvas{position:absolute;inset:0;z-index:0;width:100%;height:100%;pointer-events:none;opacity:.62;contain:strict}
 .workspace>header,.workspace>.room{position:relative;z-index:1}
 .room{background:linear-gradient(180deg,#0b0b0ea8 0%,#0b0b0e72 48%,#0b0b0e96 100%)}
-@media(max-width:800px){.liquid-fx-canvas{opacity:.72}}
+@media(max-width:800px){.liquid-fx-canvas{opacity:.42}}
 @media(prefers-reduced-motion:reduce){.liquid-fx-canvas{opacity:.45}}
 
 /* Small tactile click animation on every button without overriding hover transforms. */

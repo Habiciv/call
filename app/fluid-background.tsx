@@ -21,19 +21,34 @@ export default function FluidBackground() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const host = canvas?.parentElement;
+    const ctx = canvas?.getContext('2d', { alpha: true });
+    if (!canvas || !host || !ctx) return;
 
-    const ctx = canvas.getContext('2d');
-    const host = canvas.parentElement;
-    if (!ctx || !host) return;
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const staticMode = prefersReduced || coarsePointer;
 
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let frame = 0;
+    let raf = 0;
     let width = 1;
     let height = 1;
-    let dpr = 1;
     let lastW = 1;
     let lastH = 1;
+    let rect = host.getBoundingClientRect();
+    let lastFrame = 0;
+    let running = false;
+
+    const particleCount = width < 800 ? 9 : 14;
+    const particles: Particle[] = Array.from({ length: particleCount }, (_, i) => ({
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      homeX: ((i * 47) % 97) / 97,
+      homeY: ((i * 71 + 13) % 101) / 101,
+      radius: 2.2 + ((i * 17) % 5) * 0.7,
+      phase: i * 0.83,
+    }));
 
     const pointer = {
       x: 0,
@@ -47,66 +62,62 @@ export default function FluidBackground() {
 
     const trail: TrailPoint[] = [];
     const ripples: Ripple[] = [];
-    const particles: Particle[] = Array.from({ length: 30 }, (_, i) => ({
-      x: 0,
-      y: 0,
-      vx: 0,
-      vy: 0,
-      homeX: ((i * 47) % 97) / 97,
-      homeY: ((i * 71 + 13) % 101) / 101,
-      radius: 2.5 + ((i * 17) % 8) * 0.75,
-      phase: i * 0.83,
-    }));
 
     const resize = () => {
-      const rect = host.getBoundingClientRect();
-      width = Math.max(1, rect.width);
-      height = Math.max(1, rect.height);
-      dpr = Math.min(window.devicePixelRatio || 1, 1.6);
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
+      rect = host.getBoundingClientRect();
+      width = Math.max(1, Math.round(rect.width));
+      height = Math.max(1, Math.round(rect.height));
+
+      // 1x DPR keeps the full-page canvas much cheaper to redraw.
+      canvas.width = width;
+      canvas.height = height;
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
 
       for (const p of particles) {
         if (p.x === 0 && p.y === 0) {
           p.x = p.homeX * width;
           p.y = p.homeY * height;
         } else {
-          p.x *= width / lastW;
-          p.y *= height / lastH;
+          p.x *= width / Math.max(lastW, 1);
+          p.y *= height / Math.max(lastH, 1);
         }
       }
+
       lastW = width;
       lastH = height;
     };
 
     const localPointer = (event: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
       return { x, y, inside: x >= 0 && y >= 0 && x <= rect.width && y <= rect.height };
     };
 
     const onPointerMove = (event: PointerEvent) => {
+      if (staticMode) return;
       const next = localPointer(event);
       if (!next.inside) {
         pointer.active = false;
         return;
       }
 
+      const previousX = pointer.active ? pointer.x : next.x;
+      const previousY = pointer.active ? pointer.y : next.y;
       pointer.active = true;
-      pointer.lastX = pointer.x || next.x;
-      pointer.lastY = pointer.y || next.y;
+      pointer.lastX = previousX;
+      pointer.lastY = previousY;
       pointer.x = next.x;
       pointer.y = next.y;
-      pointer.vx = pointer.vx * 0.55 + (pointer.x - pointer.lastX) * 0.45;
-      pointer.vy = pointer.vy * 0.55 + (pointer.y - pointer.lastY) * 0.45;
+      pointer.vx = pointer.vx * 0.65 + (pointer.x - pointer.lastX) * 0.35;
+      pointer.vy = pointer.vy * 0.65 + (pointer.y - pointer.lastY) * 0.35;
 
-      if (!reducedMotion) {
+      const dx = pointer.x - pointer.lastX;
+      const dy = pointer.y - pointer.lastY;
+      if (dx * dx + dy * dy > 36) {
         trail.push({ x: pointer.x, y: pointer.y, life: 1 });
-        if (trail.length > 18) trail.shift();
+        if (trail.length > 7) trail.shift();
       }
     };
 
@@ -115,121 +126,150 @@ export default function FluidBackground() {
     };
 
     const onPointerDown = (event: PointerEvent) => {
+      if (staticMode) return;
       const next = localPointer(event);
-      if (!next.inside || reducedMotion) return;
-      ripples.push({ x: next.x, y: next.y, radius: 8, life: 1 });
-      if (ripples.length > 5) ripples.shift();
+      if (!next.inside) return;
+      ripples.push({ x: next.x, y: next.y, radius: 7, life: 1 });
+      if (ripples.length > 3) ripples.shift();
     };
 
     const drawStatic = () => {
       ctx.clearRect(0, 0, width, height);
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      particles.forEach((p) => {
-        const x = p.homeX * width;
-        const y = p.homeY * height;
+      for (const p of particles) {
         ctx.beginPath();
-        ctx.arc(x, y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 45, 78, 0.18)';
+        ctx.arc(p.homeX * width, p.homeY * height, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 55, 82, 0.20)';
         ctx.fill();
-      });
-      ctx.restore();
+      }
+    };
+
+    const drawTrail = () => {
+      if (trail.length < 2) return;
+
+      ctx.beginPath();
+      ctx.moveTo(trail[0].x, trail[0].y);
+      for (let i = 1; i < trail.length; i += 1) {
+        const prev = trail[i - 1];
+        const curr = trail[i];
+        const mx = (prev.x + curr.x) * 0.5;
+        const my = (prev.y + curr.y) * 0.5;
+        ctx.quadraticCurveTo(prev.x, prev.y, mx, my);
+      }
+      ctx.strokeStyle = 'rgba(255, 45, 75, 0.10)';
+      ctx.lineWidth = 18;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(255, 70, 95, 0.16)';
+      ctx.lineWidth = 5;
+      ctx.stroke();
     };
 
     const draw = (time: number) => {
+      if (!running) return;
+      raf = requestAnimationFrame(draw);
+
+      // Cap visual effect at ~30 FPS. The call/audio UI stays unaffected.
+      if (time - lastFrame < 33) return;
+      lastFrame = time;
+
       ctx.clearRect(0, 0, width, height);
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
 
-      // A faint watery mouse trail: several blurred red droplets that flow together.
       for (let i = trail.length - 1; i >= 0; i -= 1) {
-        const t = trail[i];
-        t.life *= 0.91;
-        const age = 1 - t.life;
-        const radius = 8 + (1 - age) * 17;
-        ctx.beginPath();
-        ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 35, 68, ${0.045 * t.life})`;
-        ctx.shadowBlur = 24;
-        ctx.shadowColor = 'rgba(255, 35, 68, .65)';
-        ctx.fill();
+        trail[i].life *= 0.84;
       }
-      while (trail.length && trail[0].life < 0.05) trail.shift();
-      ctx.shadowBlur = 0;
+      while (trail.length && trail[0].life < 0.08) trail.shift();
+      drawTrail();
 
-      // Floating dots are softly pulled by the mouse and then return to their place.
-      particles.forEach((p, i) => {
-        const homeX = p.homeX * width + Math.sin(time * 0.00022 + p.phase) * 20;
-        const homeY = p.homeY * height + Math.cos(time * 0.00018 + p.phase * 1.3) * 16;
+      for (const p of particles) {
+        const homeX = p.homeX * width + Math.sin(time * 0.00018 + p.phase) * 11;
+        const homeY = p.homeY * height + Math.cos(time * 0.00015 + p.phase * 1.3) * 9;
 
-        p.vx += (homeX - p.x) * 0.0016;
-        p.vy += (homeY - p.y) * 0.0016;
+        p.vx += (homeX - p.x) * 0.0018;
+        p.vy += (homeY - p.y) * 0.0018;
 
         if (pointer.active) {
           const dx = pointer.x - p.x;
           const dy = pointer.y - p.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          const reach = 230;
-          if (dist < reach) {
-            const force = (1 - dist / reach) ** 2;
-            p.vx += dx * 0.0032 * force + pointer.vx * 0.055 * force;
-            p.vy += dy * 0.0032 * force + pointer.vy * 0.055 * force;
+          const distSq = dx * dx + dy * dy;
+          const reach = 180;
+          if (distSq < reach * reach) {
+            const dist = Math.sqrt(distSq) || 1;
+            const force = 1 - dist / reach;
+            p.vx += dx * 0.0022 * force + pointer.vx * 0.025 * force;
+            p.vy += dy * 0.0022 * force + pointer.vy * 0.025 * force;
           }
         }
 
-        p.vx *= 0.945;
-        p.vy *= 0.945;
+        p.vx *= 0.92;
+        p.vy *= 0.92;
         p.x += p.vx;
         p.y += p.vy;
 
-        const pulse = 0.75 + Math.sin(time * 0.0014 + p.phase) * 0.25;
-        const r = p.radius * (0.9 + pulse * 0.35);
+        const pulse = 0.92 + Math.sin(time * 0.001 + p.phase) * 0.08;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 42, 73, ${0.17 + (i % 4) * 0.025})`;
-        ctx.shadowBlur = 8 + r * 1.7;
-        ctx.shadowColor = 'rgba(255, 29, 64, .38)';
+        ctx.arc(p.x, p.y, p.radius * pulse, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 48, 76, 0.24)';
         ctx.fill();
-      });
+      }
 
-      // Click feedback: a quick liquid-like ring expands from the click point.
-      ripples.forEach((r) => {
-        r.radius += 4.2;
-        r.life *= 0.92;
+      for (let i = ripples.length - 1; i >= 0; i -= 1) {
+        const r = ripples[i];
+        r.radius += 5;
+        r.life *= 0.82;
         ctx.beginPath();
         ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255, 63, 91, ${0.48 * r.life})`;
-        ctx.lineWidth = 1.2 + r.life * 1.8;
-        ctx.shadowBlur = 16;
-        ctx.shadowColor = 'rgba(255, 32, 65, .55)';
+        ctx.strokeStyle = `rgba(255, 65, 92, ${0.34 * r.life})`;
+        ctx.lineWidth = 1.5;
         ctx.stroke();
-      });
-      while (ripples.length && ripples[0].life < 0.05) ripples.shift();
+        if (r.life < 0.06) ripples.splice(i, 1);
+      }
 
-      ctx.restore();
-      pointer.vx *= 0.86;
-      pointer.vy *= 0.86;
-      frame = requestAnimationFrame(draw);
+      pointer.vx *= 0.75;
+      pointer.vy *= 0.75;
+    };
+
+    const start = () => {
+      if (staticMode || running || document.hidden) return;
+      running = true;
+      lastFrame = 0;
+      raf = requestAnimationFrame(draw);
+    };
+
+    const stop = () => {
+      running = false;
+      cancelAnimationFrame(raf);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) stop();
+      else start();
     };
 
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(host);
-    window.addEventListener('pointermove', onPointerMove, { passive: true });
-    window.addEventListener('pointerdown', onPointerDown, { passive: true });
-    window.addEventListener('blur', onPointerLeave);
-    document.addEventListener('mouseleave', onPointerLeave);
 
-    if (reducedMotion) drawStatic();
-    else frame = requestAnimationFrame(draw);
+    host.addEventListener('pointermove', onPointerMove, { passive: true });
+    host.addEventListener('pointerleave', onPointerLeave, { passive: true });
+    host.addEventListener('pointerdown', onPointerDown, { passive: true });
+    window.addEventListener('resize', resize, { passive: true });
+    window.addEventListener('blur', onPointerLeave);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    if (staticMode) drawStatic();
+    else start();
 
     return () => {
+      stop();
       observer.disconnect();
-      cancelAnimationFrame(frame);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerdown', onPointerDown);
+      host.removeEventListener('pointermove', onPointerMove);
+      host.removeEventListener('pointerleave', onPointerLeave);
+      host.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('resize', resize);
       window.removeEventListener('blur', onPointerLeave);
-      document.removeEventListener('mouseleave', onPointerLeave);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
 
