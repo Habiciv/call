@@ -32,8 +32,8 @@ function preferOpus(transceiver:RTCRtpTransceiver){
 }
 
 export function useCall(channel:string){
- const [people,setPeople]=useState<Person[]>([]),[streams,setStreams]=useState<Record<string,MediaStream>>({}),[screenStreams,setScreenStreams]=useState<Record<string,MediaStream>>({}),[remoteSharing,setRemoteSharing]=useState<Record<string,boolean>>({}),[remoteShareAudio,setRemoteShareAudio]=useState<Record<string,boolean>>({}),[avatars,setAvatars]=useState<Record<string,string>>({}),[joined,setJoined]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[muted,setMuted]=useState(false),[sharing,setSharing]=useState(false),[screen,setScreen]=useState<MediaStream|null>(null),[localStream,setLocalStream]=useState<MediaStream|null>(null),[space,setSpace]=useState(''),[shareQuality,setShareQualityState]=useState<ShareQuality>('balanced'),[shareAudio,setShareAudio]=useState(false),[peerStates,setPeerStates]=useState<Record<string,PeerState>>({}),[turnConfigured,setTurnConfigured]=useState(false);
- const session=useRef<Session|null>(null),mic=useRef<MediaStream|null>(null),display=useRef<MediaStream|null>(null),connections=useRef<Record<string,RTCPeerConnection>>({}),pending=useRef<Record<string,RTCIceCandidateInit[]>>({}),iceServers=useRef<IceServer[]>(FALLBACK_ICE),restartTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),watchdogTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),screenVideoSenders=useRef<Record<string,RTCRtpSender>>({}),screenAudioSenders=useRef<Record<string,RTCRtpSender>>({}),voiceSenders=useRef<Record<string,RTCRtpSender>>({}),shareQualityRef=useRef<ShareQuality>('balanced'),avatarVersions=useRef<Record<string,number>>({}),avatarLoading=useRef<Set<string>>(new Set()),offerLocks=useRef<Record<string,boolean>>({}),repairRequested=useRef<Record<string,number>>({}),mutedRef=useRef(false),micRecovering=useRef(false);
+ const [people,setPeople]=useState<Person[]>([]),[streams,setStreams]=useState<Record<string,MediaStream>>({}),[screenStreams,setScreenStreams]=useState<Record<string,MediaStream>>({}),[remoteSharing,setRemoteSharing]=useState<Record<string,boolean>>({}),[remoteShareAudio,setRemoteShareAudio]=useState<Record<string,boolean>>({}),[avatars,setAvatars]=useState<Record<string,string>>({}),[joined,setJoined]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[muted,setMuted]=useState(false),[sharing,setSharing]=useState(false),[screen,setScreen]=useState<MediaStream|null>(null),[localStream,setLocalStream]=useState<MediaStream|null>(null),[space,setSpace]=useState(''),[shareQuality,setShareQualityState]=useState<ShareQuality>('balanced'),[shareAudio,setShareAudio]=useState(false),[peerStates,setPeerStates]=useState<Record<string,PeerState>>({}),[turnConfigured,setTurnConfigured]=useState(false),[inputDeviceId,setInputDeviceId]=useState(''),[voiceProcessing,setVoiceProcessingState]=useState(true);
+ const session=useRef<Session|null>(null),mic=useRef<MediaStream|null>(null),display=useRef<MediaStream|null>(null),connections=useRef<Record<string,RTCPeerConnection>>({}),pending=useRef<Record<string,RTCIceCandidateInit[]>>({}),iceServers=useRef<IceServer[]>(FALLBACK_ICE),restartTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),watchdogTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),screenVideoSenders=useRef<Record<string,RTCRtpSender>>({}),screenAudioSenders=useRef<Record<string,RTCRtpSender>>({}),voiceSenders=useRef<Record<string,RTCRtpSender>>({}),shareQualityRef=useRef<ShareQuality>('balanced'),avatarVersions=useRef<Record<string,number>>({}),avatarLoading=useRef<Set<string>>(new Set()),offerLocks=useRef<Record<string,boolean>>({}),repairRequested=useRef<Record<string,number>>({}),mutedRef=useRef(false),micRecovering=useRef(false),inputDeviceRef=useRef(''),voiceProcessingRef=useRef(true);
 
  useEffect(()=>{
   let key=location.hash.slice(1);
@@ -184,23 +184,40 @@ export function useCall(channel:string){
   track.onended=()=>{if(session.current===s)void recoverMicrophone(s)};
  }
 
- async function acquireMicrophone(){
-  const preferred={echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:{ideal:1},sampleRate:{ideal:48000}} as MediaTrackConstraints;
+ async function acquireMicrophone(deviceId=inputDeviceRef.current){
+  const processing=voiceProcessingRef.current;
+  const preferred={
+   ...(deviceId?{deviceId:{exact:deviceId}}:{}),
+   echoCancellation:processing,
+   noiseSuppression:processing,
+   autoGainControl:processing,
+   channelCount:{ideal:1},
+   sampleRate:{ideal:48000}
+  } as MediaTrackConstraints;
   try{return await navigator.mediaDevices.getUserMedia({audio:preferred,video:false})}
   catch(first:any){
    if(first?.name==='NotAllowedError'||first?.name==='NotFoundError')throw first;
-   return navigator.mediaDevices.getUserMedia({audio:true,video:false});
+   const fallback=deviceId?{deviceId:{exact:deviceId}}:true;
+   return navigator.mediaDevices.getUserMedia({audio:fallback,video:false});
   }
+ }
+
+ async function installMicrophone(next:MediaStream,s:Session){
+  if(session.current!==s){next.getTracks().forEach(t=>t.stop());return false}
+  const track=next.getAudioTracks()[0];if(!track){next.getTracks().forEach(t=>t.stop());throw Error('Nenhum microfone foi encontrado.')}
+  track.enabled=!mutedRef.current;if('contentHint' in track)track.contentHint='speech';attachMicLifecycle(track,s);
+  const previous=mic.current;mic.current=next;setLocalStream(next);
+  const selected=track.getSettings?.().deviceId||inputDeviceRef.current||'';inputDeviceRef.current=selected;setInputDeviceId(selected);
+  await Promise.allSettled((Object.entries(voiceSenders.current) as [string,RTCRtpSender][]).map(async([id,sender])=>{await sender.replaceTrack(track);await tuneAudio(sender);if(connections.current[id]?.connectionState!=='connected')scheduleReconnect(id,s,0)}));
+  previous?.getTracks().forEach(t=>{t.onended=null;t.stop()});
+  return true;
  }
 
  async function recoverMicrophone(s:Session){
   if(micRecovering.current||session.current!==s)return;micRecovering.current=true;
   try{
    const next=await acquireMicrophone();if(session.current!==s){next.getTracks().forEach(t=>t.stop());return}
-   mic.current?.getTracks().forEach(t=>{t.onended=null;t.stop()});mic.current=next;
-   const track=next.getAudioTracks()[0];if(!track)throw Error('O microfone não voltou a responder.');
-   track.enabled=!mutedRef.current;if('contentHint' in track)track.contentHint='speech';attachMicLifecycle(track,s);setLocalStream(next);
-   await Promise.allSettled((Object.entries(voiceSenders.current) as [string,RTCRtpSender][]).map(async([id,sender])=>{await sender.replaceTrack(track);await tuneAudio(sender);if(connections.current[id]?.connectionState!=='connected')scheduleReconnect(id,s,0)}));
+   await installMicrophone(next,s);
    setError(old=>old.includes('microfone')?'':old);
   }catch{if(session.current===s)setError('O microfone foi desconectado. Verifique o dispositivo e permita o acesso novamente.')}finally{micRecovering.current=false}
  }
@@ -332,9 +349,9 @@ export function useCall(channel:string){
    if(!space)throw Error('A sala ainda está carregando. Tente novamente em um instante.');
    if(!navigator.mediaDevices?.getUserMedia)throw Error('Abra o site em uma janela segura do Chrome ou Edge para usar o microfone.');
    await loadIceConfig();
-   mic.current=await acquireMicrophone();
-   const track=mic.current.getAudioTracks()[0];if(!track)throw Error('Nenhum microfone foi encontrado.');track.enabled=true;if('contentHint' in track)track.contentHint='speech';setLocalStream(mic.current);
-   const s:Session={room:space+'-'+channel,id:crypto.randomUUID(),token:crypto.randomUUID(),after:0};session.current=s;attachMicLifecycle(track,s);
+   const initialMic=await acquireMicrophone();
+   const track=initialMic.getAudioTracks()[0];if(!track)throw Error('Nenhum microfone foi encontrado.');track.enabled=true;if('contentHint' in track)track.contentHint='speech';
+   const s:Session={room:space+'-'+channel,id:crypto.randomUUID(),token:crypto.randomUUID(),after:0};session.current=s;mic.current=initialMic;attachMicLifecycle(track,s);setLocalStream(initialMic);const selected=track.getSettings?.().deviceId||'';inputDeviceRef.current=selected;setInputDeviceId(selected);
    if(avatar)setAvatars({[s.id]:avatar});
    await apply(await request('join',{name:name.trim()||'Visitante',avatar},s),s);setJoined(true);void poll(s);
   }catch(e:any){
@@ -359,6 +376,20 @@ export function useCall(channel:string){
 
  function toggleMute(){
   const next=!mutedRef.current;mutedRef.current=next;mic.current?.getAudioTracks().forEach(t=>t.enabled=!next);setMuted(next);
+ }
+
+ async function switchMicrophone(deviceId:string){
+  const previous=inputDeviceRef.current;inputDeviceRef.current=deviceId;setInputDeviceId(deviceId);const s=session.current;
+  if(!s)return true;
+  try{setError('');const next=await acquireMicrophone(deviceId);await installMicrophone(next,s);return true}
+  catch(e:any){inputDeviceRef.current=previous;setInputDeviceId(previous);setError(e?.name==='NotAllowedError'?'Permita o acesso ao microfone para trocar o dispositivo.':e?.message||'Não foi possível trocar o microfone.');return false}
+ }
+
+ async function setVoiceProcessing(enabled:boolean){
+  voiceProcessingRef.current=enabled;setVoiceProcessingState(enabled);
+  const track=mic.current?.getAudioTracks()[0];if(!track)return true;
+  try{await track.applyConstraints({echoCancellation:enabled,noiseSuppression:enabled,autoGainControl:enabled});return true}
+  catch{setError('Seu navegador não conseguiu aplicar esse processamento ao microfone atual.');return false}
  }
 
  async function updateProfile(name:string,avatar:string){
@@ -415,5 +446,5 @@ export function useCall(channel:string){
   try{await navigator.clipboard.writeText(location.href);setError('Link copiado! Envie para sua galera entrar na mesma sala.')}catch{setError('Não consegui copiar automaticamente. Copie o endereço completo da barra do navegador.')}
  }
 
- return {people,streams,screenStreams,remoteSharing,remoteShareAudio,avatars,joined,busy,error,muted,sharing,screen,localStream,shareAudio,shareQuality,peerStates,turnConfigured,join,leave,toggleMute,share,setShareQuality,invite,updateProfile,repairAudio,self:session.current?.id};
+ return {people,streams,screenStreams,remoteSharing,remoteShareAudio,avatars,joined,busy,error,muted,sharing,screen,localStream,shareAudio,shareQuality,peerStates,turnConfigured,inputDeviceId,voiceProcessing,join,leave,toggleMute,share,setShareQuality,invite,updateProfile,repairAudio,switchMicrophone,setVoiceProcessing,self:session.current?.id};
 }
