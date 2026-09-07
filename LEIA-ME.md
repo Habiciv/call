@@ -92,3 +92,9 @@ O teste cobre health check, capacidade da sala, autenticação por token, sinali
 - JOIN idempotente evita erro 500 em cliques/requisições concorrentes.
 
 - Corrigido conflito de build: o Railway não sobrescreve mais `server/room.mjs` com uma versão antiga de `room.ts`.
+
+## Correção de transmissão desta versão
+- Corrige faixa de vídeo sendo colocada dentro do card de participante (quadrado preto/carregando).
+- Separa de forma explícita voz, vídeo da tela e áudio da tela por receptor WebRTC.
+- A transmissão só aparece no palco de compartilhamento e some quando a faixa de tela é silenciada/encerrada.
+- Mantém TURN, reconexão e canais da versão anterior.

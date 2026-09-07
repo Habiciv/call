@@ -246,13 +246,36 @@ export function useCall(channel:string){
   if(displayAudio){void sharedAudio.sender.replaceTrack(displayAudio).then(()=>tuneShareAudio(sharedAudio.sender))}
 
   p.onicecandidate=e=>{if(e.candidate)void request('signal',{target:id,data:{candidate:e.candidate.toJSON()}},s).catch(e=>{if(session.current===s)setError(e.message)})};
+  // Cada conexão possui 3 receptores: voz, vídeo da tela e áudio da tela.
+  // Alguns navegadores não preservam a identidade JS de `event.transceiver`, então
+  // comparar `e.transceiver === video` pode classificar a faixa de vídeo como voz.
+  // Isso era o quadrado preto/carregando que aparecia dentro do card da pessoa.
+  const receiverIds={
+   voice:voice.receiver.track.id,
+   screenVideo:video.receiver.track.id,
+   screenAudio:sharedAudio.receiver.track.id,
+  };
   p.ontrack=e=>{
-   const isScreen=e.transceiver===video||e.transceiver===sharedAudio;
+   const role=e.track.kind==='video'||e.track.id===receiverIds.screenVideo?'screen-video':e.track.id===receiverIds.screenAudio?'screen-audio':'voice';
+   const isScreen=role!=='voice';
    putTrack(isScreen?setScreenStreams:setStreams,id,e.track);
-   if(e.transceiver===video){
-    const active=()=>setRemoteSharing(old=>old[id]?old:{...old,[id]:true});
-    const ended=()=>setRemoteSharing(old=>old[id]===false?old:{...old,[id]:false});
-    e.track.addEventListener('unmute',active);e.track.addEventListener('ended',ended);
+   if(role==='screen-video'){
+    let muteTimer:ReturnType<typeof setTimeout>|undefined;
+    const active=()=>{
+     if(muteTimer){clearTimeout(muteTimer);muteTimer=undefined}
+     setRemoteSharing(old=>old[id]?old:{...old,[id]:true});
+    };
+    const inactive=()=>{
+     if(muteTimer)clearTimeout(muteTimer);
+     muteTimer=setTimeout(()=>{
+      if(e.track.muted||e.track.readyState!=='live')setRemoteSharing(old=>old[id]===false?old:{...old,[id]:false});
+     },1200);
+    };
+    const ended=()=>{
+     if(muteTimer)clearTimeout(muteTimer);
+     setRemoteSharing(old=>old[id]===false?old:{...old,[id]:false});
+    };
+    e.track.addEventListener('unmute',active);e.track.addEventListener('mute',inactive);e.track.addEventListener('ended',ended);
     if(!e.track.muted&&e.track.readyState==='live')queueMicrotask(active);
    }
    e.track.addEventListener('ended',()=>{
