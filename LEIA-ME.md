@@ -112,3 +112,6 @@ Nesta versão o compartilhamento de tela não depende apenas do evento `ontrack`
 
 ## Presença nos canais
 A barra lateral agora mostra quem está conectado em Lounge, Jogatina e Foco mesmo quando você está em outro canal, no estilo do Discord. A lista é atualizada automaticamente e não conecta seu áudio com os outros canais.
+
+## Correção de múltiplas janelas
+Esta versão detecta quando Edge/Chrome duplica o `sessionStorage` ao duplicar uma aba/janela. Cada janela ativa passa a receber um identificador próprio, enquanto um simples recarregamento mantém a identidade para não duplicar o perfil no servidor.

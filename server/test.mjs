@@ -34,6 +34,10 @@ test('health, capacity, signaling, profile/avatar, and participant token',async(
   const rapid=await Promise.all([call(rapidA,'join',{name:'Clique rápido',clientKey:rapidClient}),call(rapidB,'join',{name:'Clique rápido',clientKey:rapidClient})]);
   assert.ok(rapid.every(result=>result.status===200),'rapid duplicate joins must not return 500');
   const rapidPeers=rapid[rapid.length-1].data.peers;assert.equal(rapidPeers.length,1);
+  const sameRoomSpace=crypto.randomUUID(),sameRoomA={room:sameRoomSpace+'-Lounge',id:crypto.randomUUID(),token:crypto.randomUUID()},sameRoomB={room:sameRoomSpace+'-Lounge',id:crypto.randomUUID(),token:crypto.randomUUID()};
+  assert.equal((await call(sameRoomA,'join',{name:'Zen',clientKey:crypto.randomUUID()})).status,200);
+  const sameRoomJoin=await call(sameRoomB,'join',{name:'John',clientKey:crypto.randomUUID()});assert.equal(sameRoomJoin.status,200);assert.equal(sameRoomJoin.data.peers.length,2);
+  const sameRoomPoll=await call(sameRoomA,'poll');assert.equal(sameRoomPoll.status,200);assert.equal(sameRoomPoll.data.peers.length,2);
   const presenceSpace=crypto.randomUUID(),presenceA={room:presenceSpace+'-Lounge',id:crypto.randomUUID(),token:crypto.randomUUID()},presenceB={room:presenceSpace+'-Jogatina',id:crypto.randomUUID(),token:crypto.randomUUID()};
   assert.equal((await call(presenceA,'join',{name:'Zen',clientKey:crypto.randomUUID()})).status,200);
   assert.equal((await call(presenceB,'join',{name:'John',clientKey:crypto.randomUUID()})).status,200);

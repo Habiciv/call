@@ -33,18 +33,60 @@ function preferOpus(transceiver:RTCRtpTransceiver){
 
 export function useCall(channel:string){
  const [people,setPeople]=useState<Person[]>([]),[streams,setStreams]=useState<Record<string,MediaStream>>({}),[screenStreams,setScreenStreams]=useState<Record<string,MediaStream>>({}),[remoteSharing,setRemoteSharing]=useState<Record<string,boolean>>({}),[remoteShareAudio,setRemoteShareAudio]=useState<Record<string,boolean>>({}),[avatars,setAvatars]=useState<Record<string,string>>({}),[joined,setJoined]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[muted,setMuted]=useState(false),[sharing,setSharing]=useState(false),[screen,setScreen]=useState<MediaStream|null>(null),[localStream,setLocalStream]=useState<MediaStream|null>(null),[space,setSpace]=useState(''),[shareQuality,setShareQualityState]=useState<ShareQuality>('balanced'),[shareAudio,setShareAudio]=useState(false),[peerStates,setPeerStates]=useState<Record<string,PeerState>>({}),[turnConfigured,setTurnConfigured]=useState(false),[inputDeviceId,setInputDeviceId]=useState(''),[voiceProcessing,setVoiceProcessingState]=useState(true);
- const session=useRef<Session|null>(null),mic=useRef<MediaStream|null>(null),display=useRef<MediaStream|null>(null),connections=useRef<Record<string,RTCPeerConnection>>({}),pending=useRef<Record<string,RTCIceCandidateInit[]>>({}),iceServers=useRef<IceServer[]>(FALLBACK_ICE),restartTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),watchdogTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),screenVideoSenders=useRef<Record<string,RTCRtpSender>>({}),screenAudioSenders=useRef<Record<string,RTCRtpSender>>({}),screenVideoReceivers=useRef<Record<string,RTCRtpReceiver>>({}),screenReady=useRef<Record<string,boolean>>({}),shareRepairTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),voiceSenders=useRef<Record<string,RTCRtpSender>>({}),screenAttachJobs=useRef<Record<string,Promise<void>>>({}),shareQualityRef=useRef<ShareQuality>('balanced'),avatarVersions=useRef<Record<string,number>>({}),avatarLoading=useRef<Set<string>>(new Set()),offerLocks=useRef<Record<string,boolean>>({}),repairRequested=useRef<Record<string,number>>({}),mutedRef=useRef(false),micRecovering=useRef(false),inputDeviceRef=useRef(''),voiceProcessingRef=useRef(true),clientKeyRef=useRef(''),lastTunedPeerCount=useRef(-1),joinLock=useRef(false);
+ const session=useRef<Session|null>(null),mic=useRef<MediaStream|null>(null),display=useRef<MediaStream|null>(null),connections=useRef<Record<string,RTCPeerConnection>>({}),pending=useRef<Record<string,RTCIceCandidateInit[]>>({}),iceServers=useRef<IceServer[]>(FALLBACK_ICE),restartTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),watchdogTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),screenVideoSenders=useRef<Record<string,RTCRtpSender>>({}),screenAudioSenders=useRef<Record<string,RTCRtpSender>>({}),screenVideoReceivers=useRef<Record<string,RTCRtpReceiver>>({}),screenReady=useRef<Record<string,boolean>>({}),shareRepairTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),voiceSenders=useRef<Record<string,RTCRtpSender>>({}),screenAttachJobs=useRef<Record<string,Promise<void>>>({}),shareQualityRef=useRef<ShareQuality>('balanced'),avatarVersions=useRef<Record<string,number>>({}),avatarLoading=useRef<Set<string>>(new Set()),offerLocks=useRef<Record<string,boolean>>({}),repairRequested=useRef<Record<string,number>>({}),mutedRef=useRef(false),micRecovering=useRef(false),inputDeviceRef=useRef(''),voiceProcessingRef=useRef(true),clientKeyRef=useRef(''),tabIdentityChannel=useRef<BroadcastChannel|null>(null),lastTunedPeerCount=useRef(-1),joinLock=useRef(false);
 
  useEffect(()=>{
+  let cancelled=false;
   let key=location.hash.slice(1);
   if(!/^[a-f0-9-]{36}$/.test(key)){key=crypto.randomUUID();history.replaceState(null,'','#'+key)}
-  try{
-   let clientKey=sessionStorage.getItem('voz-tab-id')||'';
-   if(!/^[a-f0-9-]{36}$/i.test(clientKey)){clientKey=crypto.randomUUID();sessionStorage.setItem('voz-tab-id',clientKey)}
+
+  const initTabIdentity=async()=>{
+   let clientKey='',hadStored=false;
+   try{
+    const stored=sessionStorage.getItem('voz-tab-id')||'';
+    hadStored=/^[a-f0-9-]{36}$/i.test(stored);
+    clientKey=hadStored?stored:crypto.randomUUID();
+    if(!hadStored)sessionStorage.setItem('voz-tab-id',clientKey);
+   }catch{clientKey=crypto.randomUUID()}
+
+   // Chromium/Edge copia sessionStorage quando uma aba/janela é duplicada.
+   // Isso fazia duas pessoas no mesmo PC usarem o mesmo client_key e o
+   // servidor removia uma delas como se fosse um perfil duplicado.
+   // Em reload mantemos a chave (para substituir a presença antiga); em uma
+   // nova/duplicada janela perguntamos às outras abas se a chave já está viva.
+   if(typeof BroadcastChannel!=='undefined'){
+    try{
+     const channel=new BroadcastChannel('voz-tab-identity-v2');
+     tabIdentityChannel.current=channel;
+     const probe=crypto.randomUUID();
+     let collision=false;
+     channel.onmessage=(event)=>{
+      const data=event.data||{};
+      if(data.type==='probe'&&data.key===clientKey&&data.probe!==probe){
+       channel.postMessage({type:'alive',key:clientKey,probe:data.probe});
+      }else if(data.type==='alive'&&data.key===clientKey&&data.probe===probe){
+       collision=true;
+      }
+     };
+     const nav=performance.getEntriesByType?.('navigation')?.[0] as PerformanceNavigationTiming|undefined;
+     const isReload=nav?.type==='reload';
+     if(hadStored&&!isReload){
+      channel.postMessage({type:'probe',key:clientKey,probe});
+      await new Promise(resolve=>setTimeout(resolve,120));
+      if(collision){
+       clientKey=crypto.randomUUID();
+       try{sessionStorage.setItem('voz-tab-id',clientKey)}catch{}
+      }
+     }
+    }catch{}
+   }
+   if(cancelled)return;
    clientKeyRef.current=clientKey;
-  }catch{clientKeyRef.current=crypto.randomUUID()}
-  setSpace(key);void loadIceConfig();
-  return()=>{cleanup()};
+   setSpace(key);
+   void loadIceConfig();
+  };
+  void initTabIdentity();
+  return()=>{cancelled=true;try{tabIdentityChannel.current?.close()}catch{}tabIdentityChannel.current=null;cleanup()};
  },[]);
 
  async function loadIceConfig(){
