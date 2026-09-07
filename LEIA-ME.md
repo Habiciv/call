@@ -60,3 +60,26 @@ As conexões de voz e tela são diretas entre participantes (WebRTC), com servid
 
 Não há credenciais ou dados do site original neste pacote.
 
+
+## Áudio/WebRTC no Railway (importante)
+
+Esta versão usa STUN por padrão e aceita um servidor TURN opcional. TURN é necessário para chamadas confiáveis entre redes que bloqueiam conexão WebRTC direta (alguns Wi‑Fi, CGNAT, escola/empresa e algumas operadoras).
+
+No Railway, em **Variables**, você pode definir:
+
+- `TURN_URL` — exemplo de formato: `turn:seu-host:3478?transport=udp,turn:seu-host:3478?transport=tcp`
+- `TURN_USERNAME`
+- `TURN_CREDENTIAL`
+
+Use as credenciais fornecidas pelo seu provedor TURN. Não coloque a senha diretamente no código ou no GitHub.
+
+Sem TURN, a chamada ainda tenta funcionar usando STUN, mas não há como garantir conexão entre todas as redes.
+
+### Melhorias desta versão
+
+- áudio remoto toca em um elemento `<audio>` separado do compartilhamento de tela;
+- botão **Ativar áudio** aparece se o navegador bloquear autoplay;
+- microfone usa cancelamento de eco, supressão de ruído, ganho automático e áudio mono;
+- ICE reinicia automaticamente se uma conexão cair;
+- sinalização é consultada mais rápido durante a call;
+- compartilhamento é limitado a 720p/15 FPS e bitrate adaptado ao número de conexões para preservar o áudio.

@@ -42,3 +42,4 @@ h1{letter-spacing:-.055em;font-weight:750}h1 span{text-shadow:0 0 28px #ff405780
 button{transition:background .18s,transform .18s,scale .12s,filter .18s}
 button:active:not(:disabled){scale:.96}
 @media(prefers-reduced-motion:reduce){button:active:not(:disabled){scale:1}}
+.enable-audio{margin-top:12px!important;min-height:38px!important;height:38px!important;padding:0 12px!important;border:1px solid #7a3045!important;border-radius:8px!important;background:#35151f!important;color:#ffd9e0!important;font-size:12px!important;display:flex!important;align-items:center!important;gap:7px!important}

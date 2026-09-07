@@ -16,7 +16,7 @@ type Particle = {
 type TrailPoint = { x: number; y: number; life: number };
 type Ripple = { x: number; y: number; radius: number; life: number };
 
-export default function FluidBackground() {
+export default function FluidBackground({ lowPower = false }: { lowPower?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export default function FluidBackground() {
     let lastFrame = 0;
     let running = false;
 
-    const particleCount = width < 800 ? 9 : 14;
+    const particleCount = lowPower ? 7 : 10;
     const particles: Particle[] = Array.from({ length: particleCount }, (_, i) => ({
       x: 0,
       y: 0,
@@ -117,7 +117,7 @@ export default function FluidBackground() {
       const dy = pointer.y - pointer.lastY;
       if (dx * dx + dy * dy > 36) {
         trail.push({ x: pointer.x, y: pointer.y, life: 1 });
-        if (trail.length > 7) trail.shift();
+        if (trail.length > (lowPower ? 4 : 7)) trail.shift();
       }
     };
 
@@ -170,8 +170,9 @@ export default function FluidBackground() {
       if (!running) return;
       raf = requestAnimationFrame(draw);
 
-      // Cap visual effect at ~30 FPS. The call/audio UI stays unaffected.
-      if (time - lastFrame < 33) return;
+      // While connected, spend much less CPU/GPU on decoration so WebRTC gets priority.
+      const frameBudget = lowPower ? 66 : 33;
+      if (time - lastFrame < frameBudget) return;
       lastFrame = time;
 
       ctx.clearRect(0, 0, width, height);
@@ -271,7 +272,7 @@ export default function FluidBackground() {
       window.removeEventListener('blur', onPointerLeave);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [lowPower]);
 
   return <canvas ref={canvasRef} className="liquid-fx-canvas" aria-hidden="true" />;
 }

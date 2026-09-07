@@ -8,6 +8,13 @@ const server=createServer(async(req,res)=>{try{
 res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Permissions-Policy','microphone=(self), display-capture=(self), camera=()');
 const protocol=req.headers['x-forwarded-proto']==='https'?'https':'http';const origin=process.env.PUBLIC_ORIGIN||`${protocol}://${req.headers.host}`;const url=new URL(req.url,origin);
 if(url.pathname==='/health'){res.writeHead(200,{'Content-Type':'application/json'});res.end('{"ok":true}');return}
+if(url.pathname==='/api/config'){
+ if(req.method!=='GET'){res.writeHead(405);res.end();return}
+ const iceServers=[{urls:'stun:stun.cloudflare.com:3478'},{urls:'stun:stun.l.google.com:19302'}];
+ const turnUrls=String(process.env.TURN_URL||'').split(',').map(v=>v.trim()).filter(Boolean);
+ if(turnUrls.length&&process.env.TURN_USERNAME&&process.env.TURN_CREDENTIAL)iceServers.push({urls:turnUrls.length===1?turnUrls[0]:turnUrls,username:process.env.TURN_USERNAME,credential:process.env.TURN_CREDENTIAL});
+ res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({iceServers,turnConfigured:turnUrls.length>0}));return
+}
 if(url.pathname==='/api/room'){
 if(req.method!=='POST'){res.writeHead(405);res.end();return}
 let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>40000){res.writeHead(413);res.end();return}chunks.push(chunk)}
