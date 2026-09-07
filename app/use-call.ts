@@ -33,7 +33,7 @@ function preferOpus(transceiver:RTCRtpTransceiver){
 
 export function useCall(channel:string){
  const [people,setPeople]=useState<Person[]>([]),[streams,setStreams]=useState<Record<string,MediaStream>>({}),[screenStreams,setScreenStreams]=useState<Record<string,MediaStream>>({}),[remoteSharing,setRemoteSharing]=useState<Record<string,boolean>>({}),[remoteShareAudio,setRemoteShareAudio]=useState<Record<string,boolean>>({}),[avatars,setAvatars]=useState<Record<string,string>>({}),[joined,setJoined]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[muted,setMuted]=useState(false),[sharing,setSharing]=useState(false),[screen,setScreen]=useState<MediaStream|null>(null),[localStream,setLocalStream]=useState<MediaStream|null>(null),[space,setSpace]=useState(''),[shareQuality,setShareQualityState]=useState<ShareQuality>('balanced'),[shareAudio,setShareAudio]=useState(false),[peerStates,setPeerStates]=useState<Record<string,PeerState>>({}),[turnConfigured,setTurnConfigured]=useState(false),[inputDeviceId,setInputDeviceId]=useState(''),[voiceProcessing,setVoiceProcessingState]=useState(true);
- const session=useRef<Session|null>(null),mic=useRef<MediaStream|null>(null),display=useRef<MediaStream|null>(null),connections=useRef<Record<string,RTCPeerConnection>>({}),pending=useRef<Record<string,RTCIceCandidateInit[]>>({}),iceServers=useRef<IceServer[]>(FALLBACK_ICE),restartTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),watchdogTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),screenVideoSenders=useRef<Record<string,RTCRtpSender>>({}),screenAudioSenders=useRef<Record<string,RTCRtpSender>>({}),voiceSenders=useRef<Record<string,RTCRtpSender>>({}),shareQualityRef=useRef<ShareQuality>('balanced'),avatarVersions=useRef<Record<string,number>>({}),avatarLoading=useRef<Set<string>>(new Set()),offerLocks=useRef<Record<string,boolean>>({}),repairRequested=useRef<Record<string,number>>({}),mutedRef=useRef(false),micRecovering=useRef(false),inputDeviceRef=useRef(''),voiceProcessingRef=useRef(true),clientKeyRef=useRef(''),lastTunedPeerCount=useRef(-1),joinLock=useRef(false);
+ const session=useRef<Session|null>(null),mic=useRef<MediaStream|null>(null),display=useRef<MediaStream|null>(null),connections=useRef<Record<string,RTCPeerConnection>>({}),pending=useRef<Record<string,RTCIceCandidateInit[]>>({}),iceServers=useRef<IceServer[]>(FALLBACK_ICE),restartTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),watchdogTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),screenVideoSenders=useRef<Record<string,RTCRtpSender>>({}),screenAudioSenders=useRef<Record<string,RTCRtpSender>>({}),screenVideoReceivers=useRef<Record<string,RTCRtpReceiver>>({}),screenReady=useRef<Record<string,boolean>>({}),shareRepairTimers=useRef<Record<string,ReturnType<typeof setTimeout>>>({}),voiceSenders=useRef<Record<string,RTCRtpSender>>({}),shareQualityRef=useRef<ShareQuality>('balanced'),avatarVersions=useRef<Record<string,number>>({}),avatarLoading=useRef<Set<string>>(new Set()),offerLocks=useRef<Record<string,boolean>>({}),repairRequested=useRef<Record<string,number>>({}),mutedRef=useRef(false),micRecovering=useRef(false),inputDeviceRef=useRef(''),voiceProcessingRef=useRef(true),clientKeyRef=useRef(''),lastTunedPeerCount=useRef(-1),joinLock=useRef(false);
 
  useEffect(()=>{
   let key=location.hash.slice(1);
@@ -60,12 +60,13 @@ export function useCall(channel:string){
  function clearPeerTimer(id:string){
   if(restartTimers.current[id]){clearTimeout(restartTimers.current[id]);delete restartTimers.current[id]}
   if(watchdogTimers.current[id]){clearTimeout(watchdogTimers.current[id]);delete watchdogTimers.current[id]}
+  if(shareRepairTimers.current[id]){clearTimeout(shareRepairTimers.current[id]);delete shareRepairTimers.current[id]}
  }
 
  function dropConnection(id:string){
   clearPeerTimer(id);
   try{connections.current[id]?.close()}catch{}
-  delete connections.current[id];delete pending.current[id];delete screenVideoSenders.current[id];delete screenAudioSenders.current[id];delete voiceSenders.current[id];delete offerLocks.current[id];delete repairRequested.current[id];
+  delete connections.current[id];delete pending.current[id];delete screenVideoSenders.current[id];delete screenAudioSenders.current[id];delete screenVideoReceivers.current[id];delete screenReady.current[id];delete voiceSenders.current[id];delete offerLocks.current[id];delete repairRequested.current[id];
  }
 
  function cleanup(){
@@ -73,7 +74,7 @@ export function useCall(channel:string){
   mic.current?.getTracks().forEach(t=>t.stop());
   display.current?.getTracks().forEach(t=>t.stop());
   Object.keys(connections.current).forEach(dropConnection);
-  connections.current={};pending.current={};screenVideoSenders.current={};screenAudioSenders.current={};voiceSenders.current={};mic.current=null;display.current=null;avatarLoading.current.clear();avatarVersions.current={};offerLocks.current={};repairRequested.current={};mutedRef.current=false;micRecovering.current=false;lastTunedPeerCount.current=-1;
+  connections.current={};pending.current={};screenVideoSenders.current={};screenAudioSenders.current={};screenVideoReceivers.current={};screenReady.current={};shareRepairTimers.current={};voiceSenders.current={};mic.current=null;display.current=null;avatarLoading.current.clear();avatarVersions.current={};offerLocks.current={};repairRequested.current={};mutedRef.current=false;micRecovering.current=false;lastTunedPeerCount.current=-1;
  }
 
  async function request(action:string,extra:any={},s=session.current){
@@ -158,6 +159,29 @@ export function useCall(channel:string){
   await sendOffer(id,s,restart);
  }
 
+ async function renegotiateSharePeer(id:string,s:Session){
+  const p=connections.current[id];if(!p||session.current!==s)return;
+  // replaceTrack(null -> tela) funciona em muitos navegadores sem SDP novo,
+  // mas Chromium pode manter o receiver de vídeo sem um stream associado.
+  // Uma oferta curta depois de anexar a tela publica o MSID/track e faz o
+  // receptor disparar/atualizar a faixa de vídeo de forma confiável.
+  for(let attempt=0;attempt<24&&session.current===s;attempt++){
+   if(p.signalingState==='stable'&&!offerLocks.current[id]){await sendOffer(id,s,false);return}
+   await new Promise(r=>setTimeout(r,75));
+  }
+ }
+
+ function scheduleShareRepair(id:string,s:Session){
+  if(shareRepairTimers.current[id])clearTimeout(shareRepairTimers.current[id]);
+  shareRepairTimers.current[id]=setTimeout(()=>{
+   delete shareRepairTimers.current[id];
+   if(session.current!==s||screenReady.current[id])return;
+   // Se o aviso "AO VIVO" chegou mas nenhum frame RTP chegou, pede ao
+   // transmissor para recolocar a faixa e renegociar aquele peer.
+   void request('signal',{target:id,data:{control:{type:'share-repair'}}},s).catch(()=>{});
+  },2200);
+ }
+
  function askInitiatorToRepair(id:string,s:Session){
   const now=Date.now();if((repairRequested.current[id]||0)>now-3000)return;repairRequested.current[id]=now;
   void request('signal',{target:id,data:{control:{type:'repair'}}},s).catch(()=>{});
@@ -239,7 +263,7 @@ export function useCall(channel:string){
   const p=new RTCPeerConnection({iceServers:iceServers.current,iceTransportPolicy:'all',bundlePolicy:'max-bundle',rtcpMuxPolicy:'require',iceCandidatePoolSize:8});connections.current[id]=p;setPeerState(id,'new');
   const audioTrack=mic.current?.getAudioTracks()[0];
   const voice=audioTrack?p.addTransceiver(audioTrack,{direction:'sendrecv'}):p.addTransceiver('audio',{direction:'sendrecv'});preferOpus(voice);voiceSenders.current[id]=voice.sender;if(audioTrack)void tuneAudio(voice.sender);
-  const video=p.addTransceiver('video',{direction:'sendrecv'});screenVideoSenders.current[id]=video.sender;
+  const video=p.addTransceiver('video',{direction:'sendrecv'});screenVideoSenders.current[id]=video.sender;screenVideoReceivers.current[id]=video.receiver;screenReady.current[id]=false;
   const sharedAudio=p.addTransceiver('audio',{direction:'sendrecv'});preferOpus(sharedAudio);screenAudioSenders.current[id]=sharedAudio.sender;
   const displayVideo=display.current?.getVideoTracks()[0],displayAudio=display.current?.getAudioTracks()[0];
   if(displayVideo){void video.sender.replaceTrack(displayVideo).then(()=>tuneVideo(video.sender))}
@@ -260,15 +284,16 @@ export function useCall(channel:string){
    const isScreen=role!=='voice';
    putTrack(isScreen?setScreenStreams:setStreams,id,e.track);
    if(role==='screen-video'){
-    // IMPORTANTE: um transceiver de vídeo reservado pode disparar `ontrack`/
-    // `unmute` mesmo sem existir compartilhamento de tela. Por isso a faixa
-    // WebRTC, sozinha, NUNCA deve ligar o estado "AO VIVO". O estado de
-    // transmissão é controlado exclusivamente pela mensagem `media.sharing`
-    // enviada quando a pessoa aperta/parar o botão Transmitir.
-    //
-    // `ended` ainda pode desligar uma transmissão verdadeira caso a conexão
-    // seja encerrada de forma abrupta.
+    // O transceiver existe desde o começo, mas a UI só mostra "AO VIVO" pela
+    // sinalização explícita. Aqui apenas marcamos quando frames de verdade
+    // começam a chegar.
+    const ready=()=>{screenReady.current[id]=true;if(shareRepairTimers.current[id]){clearTimeout(shareRepairTimers.current[id]);delete shareRepairTimers.current[id]}};
+    const notReady=()=>{screenReady.current[id]=false};
+    if(!e.track.muted&&e.track.readyState==='live')ready();
+    e.track.addEventListener('unmute',ready);
+    e.track.addEventListener('mute',notReady);
     e.track.addEventListener('ended',()=>{
+     notReady();
      setRemoteSharing(old=>old[id]===false?old:{...old,[id]:false});
      setRemoteShareAudio(old=>old[id]===false?old:{...old,[id]:false});
     });
@@ -318,16 +343,36 @@ export function useCall(channel:string){
   if(!ids.has(signal.sender))return true;
   let data:any;try{data=JSON.parse(signal.data)}catch{return true}
   if(data.media){
-   // A sinalização explícita é a única fonte de verdade para mostrar o painel
-   // de transmissão. Isso evita "AO VIVO" fantasma causado pelo transceiver
-   // de vídeo que já existe desde o início da call.
+   // A sinalização explícita continua sendo a única fonte de verdade para
+   // mostrar o painel. Ao receber "sharing", anexamos imediatamente o track
+   // do receiver reservado ao MediaStream, mesmo se o browser ainda não tiver
+   // disparado ontrack. Isso corrige o "Conectando transmissão…" infinito.
    const active=Boolean(data.media.sharing),hasAudio=active&&Boolean(data.media.shareAudio);
    setRemoteSharing(old=>old[signal.sender]===active?old:{...old,[signal.sender]:active});
    setRemoteShareAudio(old=>old[signal.sender]===hasAudio?old:{...old,[signal.sender]:hasAudio});
+   if(active){
+    const receiver=screenVideoReceivers.current[signal.sender];
+    if(receiver?.track)putTrack(setScreenStreams,signal.sender,receiver.track);
+    screenReady.current[signal.sender]=Boolean(receiver?.track&&!receiver.track.muted&&receiver.track.readyState==='live');
+    if(!screenReady.current[signal.sender])scheduleShareRepair(signal.sender,s);
+   }else{
+    screenReady.current[signal.sender]=false;
+    if(shareRepairTimers.current[signal.sender]){clearTimeout(shareRepairTimers.current[signal.sender]);delete shareRepairTimers.current[signal.sender]}
+   }
    return true;
   }
   if(data.control?.type==='repair'){
    if(isInitiator(signal.sender,s)){const p=connection(signal.sender,s);if(p)void ensureOffer(signal.sender,s,true)}
+   return true;
+  }
+  if(data.control?.type==='share-repair'){
+   const videoTrack=display.current?.getVideoTracks()[0];
+   if(videoTrack&&videoTrack.readyState==='live'){
+    const sender=screenVideoSenders.current[signal.sender];
+    if(sender){try{await sender.replaceTrack(videoTrack);await tuneVideo(sender)}catch{}}
+    await renegotiateSharePeer(signal.sender,s);
+    await request('signal',{target:signal.sender,data:{media:{sharing:true,shareAudio:Boolean(display.current?.getAudioTracks()[0])}}},s).catch(()=>{});
+   }
    return true;
   }
   const p=connection(signal.sender,s);
@@ -471,9 +516,15 @@ export function useCall(channel:string){
    await Promise.allSettled(Object.keys(connections.current).flatMap(id=>{
     const jobs:Promise<void>[]=[];const vs=screenVideoSenders.current[id],as=screenAudioSenders.current[id];if(vs)jobs.push(vs.replaceTrack(videoTrack).then(()=>tuneVideo(vs)));if(as)jobs.push(as.replaceTrack(audioTrack||null).then(()=>audioTrack?tuneShareAudio(as):undefined));return jobs;
    }));
-   // Os transceivers de tela já são negociados quando a call conecta. Usar
-   // replaceTrack aqui evita colisões de SDP e faz a tela aparecer sem quebrar o áudio.
-   const s=session.current;if(s)await announceMedia(s,true,Boolean(audioTrack));
+   // Alguns Chromium/Edge não ligam o receiver de vídeo corretamente quando
+   // trocamos null -> track sem atualizar o SDP. Renegociamos só ao INICIAR a
+   // tela (não a cada poll), mantendo o áudio estável e fazendo o vídeo nascer
+   // no outro lado de forma determinística.
+   const s=session.current;
+   if(s){
+    await Promise.allSettled(Object.keys(connections.current).map(id=>renegotiateSharePeer(id,s)));
+    await announceMedia(s,true,Boolean(audioTrack));
+   }
   }catch(e:any){if(e?.name!=='NotAllowedError')setError(e?.message||'Não foi possível iniciar a transmissão.')}
  }
 
