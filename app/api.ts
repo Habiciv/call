@@ -1,5 +1,6 @@
 export async function api(action:string,extra:any={}){
- const r=await fetch('/api/community',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(localStorage.getItem('tatico-credential')||'')},body:JSON.stringify({action,...extra})});
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
+ let r:Response;try{r=await fetch('/api/community',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+(localStorage.getItem('tatico-credential')||'')},body:JSON.stringify({action,...extra})})}finally{clearTimeout(timeout)}
  const data=await r.json();if(!r.ok)throw Error(data.error||'Não foi possível atualizar.');return data;
 }
 let boot:Promise<any>|null=null;
@@ -15,4 +16,3 @@ export function bootstrap(){
 export function clearLocalIdentity(){
  ['tatico-credential','voz-user-key','voz-name','voz-avatar'].forEach(key=>localStorage.removeItem(key));
 }
-

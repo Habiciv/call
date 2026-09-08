@@ -1,5 +1,16 @@
 # Vértice — comunidades, texto e voz
 
+## Versão atual: 0.4.0
+
+Interface profissional responsiva, modo TV/controle, busca no histórico, menções,
+novas mensagens, controles de voz acessíveis e transmissão adaptativa.
+Leia [RELEASE-0.4.0.md](./RELEASE-0.4.0.md) para instalação, atualização, atalhos,
+resultados dos 12 testes e limitações de dispositivos e WebRTC.
+Logout, anexos e administração da 0.3.0 foram preservados. Não há nova migração de banco.
+
+As seções abaixo registram o histórico e a configuração da arquitetura existente;
+as informações da release 0.4.0 prevalecem sobre descrições antigas de layout e validação.
+
 Aplicação de comunidades com identidade visual própria vermelho/preto, baseada na versão `voz-railway-grupos-bope.zip`. A organização da interface é inspirada em plataformas de comunidades, sem logos, brasões ou assets oficiais. Não é uma reprodução completa do Discord.
 
 ## Atualização 0.3.0 — administração, layout e desempenho
@@ -201,4 +212,3 @@ Antes de publicar, rode em Node 24+: `pnpm install --frozen-lockfile`, `pnpm tes
 - `Dockerfile`, `render.yaml`, `railway.json`: deploy.
 
 O ZIP não contém banco real, credenciais, dependências instaladas, diretórios de build ou cópias aninhadas do projeto. As dependências e o lockfile originais foram preservados. Nenhum serviço foi publicado automaticamente.
-

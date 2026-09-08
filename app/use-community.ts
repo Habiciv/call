@@ -6,9 +6,9 @@ export function useCommunity(){
  const ref=useRef(selection),seq=useRef(0),lock=useRef(false);ref.current=selection;
  function apply(j:any){setData(j);if(j.activeGroupId!==ref.current.groupId||j.activeChannelId!==ref.current.channelId)setSelection(s=>({...s,groupId:j.activeGroupId,channelId:j.activeChannelId,before:0}))}
  useEffect(()=>{void bootstrap().then(()=>setReady(true)).catch(e=>setError(e.message))},[]);
- useEffect(()=>{if(!ready)return;let alive=true,t:any;
+ useEffect(()=>{if(!ready)return;let alive=true,t:any,polling=false;
   const schedule=()=>{if(alive)t=setTimeout(poll,document.hidden?12000:2600)};
-  const poll=async()=>{if(!lock.current){const n=++seq.current;try{const j=await api('poll',ref.current);if(alive&&n===seq.current)apply(j)}catch(e:any){if(alive)setError(e.message)}}schedule()};
+  const poll=async()=>{if(polling)return;polling=true;try{if(!lock.current){const n=++seq.current;try{const j=await api('poll',ref.current);if(alive&&n===seq.current)apply(j)}catch(e:any){if(alive)setError(e.name==='AbortError'?'A conexão demorou. Tentando novamente…':e.message)}}}finally{polling=false;schedule()}};
   const visible=()=>{if(!document.hidden){clearTimeout(t);void poll()}};
   document.addEventListener('visibilitychange',visible);void poll();return()=>{alive=false;clearTimeout(t);document.removeEventListener('visibilitychange',visible);++seq.current}
  },[ready,selection]);

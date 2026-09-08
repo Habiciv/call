@@ -71,6 +71,15 @@ export async function COMMUNITY(req){try{
  const canAct=(target,minRank=2)=>{const a=actor();if(rank[a.role]<minRank)fail('Sem permissão para moderar.',403);const t=member(gid,target);if(t.user_key===key)fail('Você não pode aplicar esta ação em si mesmo.');if(rank[a.role]<=rank[t.role])fail('Você só pode moderar cargos abaixo do seu.',403);return {a,t}};
  const channel=()=>{const c=one('SELECT * FROM channels WHERE id=? AND group_id=?',cid,gid);if(!c)fail('Canal não encontrado.',404);member(gid,key);return c};
 
+ if(action==='search'){
+  channel();const query=clean(b.query,100);if(query.length<2)fail('Digite pelo menos 2 caracteres.');
+  const before=Math.max(0,Number(b.before)||0),target=String(b.dmTarget||'');let rows;
+  if(target){
+   if(target===key||!one('SELECT 1 FROM group_members a JOIN group_members b ON a.group_id=b.group_id WHERE a.user_key=? AND b.user_key=?',key,target))fail('Sem acesso a esta conversa.',403);
+   rows=all('SELECT * FROM direct_messages WHERE ((sender=? AND recipient=?) OR (sender=? AND recipient=?)) AND (?=0 OR id<?) AND (instr(lower(body),lower(?))>0 OR instr(lower(attachment_name),lower(?))>0) ORDER BY id DESC LIMIT 51',key,target,target,key,before,before,query,query).map(m=>({...m,...mediaFields(m),sender:publicId(m.sender),recipient:publicId(m.recipient)}));
+  }else rows=decorateRows(all('SELECT * FROM channel_messages WHERE channel_id=? AND (?=0 OR id<?) AND (instr(lower(body),lower(?))>0 OR instr(lower(attachment_name),lower(?))>0) ORDER BY id DESC LIMIT 51',cid,before,before,query,query),cid,key);
+  return Response.json({results:rows.slice(0,50),hasMore:rows.length>50},{headers:{'Cache-Control':'no-store'}});
+ }
  if(action==='create')transaction(()=>{
   gid=randomUUID();const space=randomUUID(),code=randomBytes(5).toString('hex').toUpperCase();
   run('INSERT INTO groups(id,name,invite_code,owner_key,space,created,description) VALUES(?,?,?,?,?,?,?)',gid,name(b.name),code,key,space,now,'');

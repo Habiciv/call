@@ -2,7 +2,7 @@ import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {Maximize,Minimize,Expand} from 'lucide-react';
 export function ScreenPanel({children}:{children:ReactNode}){
  const panel=useRef<HTMLElement>(null),expandButton=useRef<HTMLButtonElement>(null);
- const [expanded,setExpanded]=useState(false),[fullscreen,setFullscreen]=useState(false),[message,setMessage]=useState('');
+ const [expanded,setExpanded]=useState(false),[collapsed,setCollapsed]=useState(false),[fullscreen,setFullscreen]=useState(false),[message,setMessage]=useState('');
  useEffect(()=>{
   const sync=()=>setFullscreen(document.fullscreenElement===panel.current);
   document.addEventListener('fullscreenchange',sync);
@@ -14,12 +14,14 @@ export function ScreenPanel({children}:{children:ReactNode}){
   window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
  },[expanded]);
  async function full(){
-  setMessage('');
+  setMessage('');setCollapsed(false);
   try{if(document.fullscreenElement===panel.current)await document.exitFullscreen();else if(panel.current?.requestFullscreen)await panel.current.requestFullscreen();else throw Error('unsupported')}
   catch{setExpanded(true);setMessage('Tela cheia não disponível neste navegador. Transmissão ampliada na página.');}
  }
- return <aside ref={panel} className={'screens '+(expanded?'expanded':'')} aria-label="Transmissões de tela">
+ return <aside ref={panel} className={'screens '+(expanded?'expanded':'')+(collapsed?' collapsed':'')} aria-label="Transmissões de tela">
+  {!fullscreen&&<button className="screen-collapse" aria-expanded={!collapsed} onClick={()=>{setCollapsed(v=>!v);setExpanded(false)}}>{collapsed?'Ver transmissões':'Recolher transmissões'}</button>}
+  <div hidden={collapsed}>
   <div className="screen-view-controls"><button ref={expandButton} type="button" aria-pressed={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?<Minimize size={16}/>:<Maximize size={16}/>} {expanded?'Reduzir':'Ampliar'}</button><button type="button" onClick={()=>void full()}><Expand size={16}/>{fullscreen?'Sair da tela cheia':'Tela cheia'}</button></div>
   {message&&<p role="status" className="screen-view-message">{message}</p>}{children}
- </aside>;
+  </div></aside>;
 }
