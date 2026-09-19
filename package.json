@@ -1,13 +1,13 @@
 {
-  "name": "voz-railway",
-  "version": "0.1.0",
+  "name": "bope-stream",
+  "version": "1.0.0",
   "private": true,
   "engines": {
     "node": ">=24.0.0"
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build && node server/build.mjs",
+    "build": "vite build",
     "start": "node server/index.mjs",
     "test": "node --test server/test.mjs"
   },
