@@ -1,118 +1,178 @@
-import {useNavigation} from './use-navigation';
-import {MessageSearch} from './message-search';
-import {MentionText} from './mentions';
-import {ScreenPanel} from './screen-panel';
 'use client';
-import {useEffect,useRef,useState} from 'react';
-import {Shield,Hash,Volume2,Plus,Settings,Users,Mic,MicOff,Headphones,PhoneOff,MonitorUp,Send,Pin,Reply,MessageCircle,Copy,Search,ChevronDown,Menu,Radio,Trash2,Pencil,X,LogOut,Paperclip} from 'lucide-react';
-import {Dialog,DialogContent,DialogTitle,DialogDescription} from '@/components/ui/dialog';
-import {useCall,type ShareQuality} from './use-call';
-import {api,clearLocalIdentity} from './api';
-import {useCommunity} from './use-community';
-import {Avatar,Media,SpeakingSensor,avatarFromFile,unlockRoomAudio} from './media';
-import {CommunitySettings} from './community-settings';
-import {ServerSettings} from './server-settings';
-import {ChannelSettings} from './channel-settings';
-type Channel={id:string;name:string;kind:'text'|'voice';roomKey:string;topic?:string;slowmode?:number};
-const roles:Record<string,string>={owner:'Dono',admin:'Administrador',moderator:'Moderador',member:'Membro'};
-const states:Record<string,string>={online:'Online',away:'Ausente',busy:'Ocupado',offline:'Offline'};
-const qualities:Record<ShareQuality,string>={stable:'540p',balanced:'720p',high:'1080p',ultra:'1440p','4k':'4K adaptativo'};
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { MonitorUp, Link as LinkIcon, LogOut, Radio, Smartphone, Shield, Gauge, Users, Wifi, MonitorPlay } from 'lucide-react';
+import { useCall, type StreamQuality } from './use-call';
+
+function VideoCard({stream,label,tag,muted=false}:{stream:MediaStream;label:string;tag?:string;muted?:boolean}){
+  const ref=useRef<HTMLVideoElement>(null);
+  useEffect(()=>{
+    if(ref.current){
+      ref.current.srcObject=stream;
+      ref.current.muted=muted;
+      void ref.current.play().catch(()=>{});
+    }
+  },[stream,muted]);
+  return <div className="video-card"><div className="video-top"><strong>{label}</strong>{tag&&<span>{tag}</span>}</div><video ref={ref} autoPlay playsInline muted={muted} controls className="video"/></div>;
+}
+
+function initials(name:string){
+  return name.trim().split(/\s+/).slice(0,2).map(p=>p[0]||'').join('').toUpperCase()||'BO';
+}
+
 export default function Home(){
- const {data:d,selection:s,select,act,error,setError,ready,busy}=useCommunity();
- const [draft,setDraft]=useState(''),[reply,setReply]=useState<any>(null),[editing,setEditing]=useState<any>(null),[pins,setPins]=useState(false),[members,setMembers]=useState(()=>matchMedia("(min-width:1001px)").matches),[nav,setNav]=useState(false),[search,setSearch]=useState('');
- const [modal,setModal]=useState(''),[input,setInput]=useState(''),[kind,setKind]=useState('text'),[notice,setNotice]=useState('');
- const [attachment,setAttachment]=useState<any>(null),[uploading,setUploading]=useState(false);
- const [tv,setTv]=useState(()=>localStorage.getItem('vertice-tv')==='1'),[unread,setUnread]=useState(0);
- const incoming=useRef({scope:'',id:0}),composerInput=useRef<HTMLTextAreaElement>(null);
- useNavigation(tv);
- useEffect(()=>{
-  const main=document.querySelector<HTMLElement>('.workspace'),media=document.querySelector<HTMLElement>('.screens'),query=matchMedia('(max-width:760px)');
-  const sync=()=>{if(main)main.inert=nav&&query.matches;if(media)media.inert=nav&&query.matches};sync();query.addEventListener('change',sync);
-  if(nav&&query.matches)document.querySelector<HTMLButtonElement>('.nav-close')?.focus();
-  return()=>{if(main)main.inert=false;if(media)media.inert=false;query.removeEventListener('change',sync)};
- },[nav]);
- useEffect(()=>{localStorage.setItem('vertice-tv',String(tv?1:0));document.documentElement.classList.toggle('tv-mode',tv);return()=>document.documentElement.classList.remove('tv-mode')},[tv]);
- const fileInput=useRef<HTMLInputElement>(null);
- const [voice,setVoice]=useState<Channel|null>(null),[deaf,setDeaf]=useState(false),[speaking,setSpeaking]=useState<Record<string,boolean>>({}),[presence,setPresence]=useState<any[]>([]);
- const [output,setOutput]=useState(()=>localStorage.getItem('voz-output-device')||''),[sensitivity,setSensitivity]=useState<'low'|'normal'|'high'>('normal');
- const muteBefore=useRef(false),typingAt=useRef(0),bottom=useRef<HTMLDivElement>(null),atBottom=useRef(true);
- const group=d.groups.find((g:any)=>g.id===s.groupId),channel:Channel|undefined=d.channels.find((c:Channel)=>c.id===s.channelId),me=d.me;
- const myMember=d.members.find((m:any)=>m.userKey===me?.userKey),timedOut=Number(myMember?.timeoutUntil||0)>Date.now();
- const call=useCall(voice?.roomKey.slice(37)||'Lounge',group?.space||'');
- const manage=['owner','admin'].includes(group?.role),moderate=['owner','admin','moderator'].includes(group?.role);
- const person=d.members.find((m:any)=>m.userKey===s.dmTarget),title=s.dmTarget?person?.name||'Mensagem direta':channel?.name||'Sua central';
- useEffect(()=>{const code=new URL(location.href).searchParams.get('invite');if(code&&ready){setInput(code);setModal('join')}},[ready]);
- useEffect(()=>{setDraft('');setReply(null);setEditing(null);setAttachment(null);setPins(false);atBottom.current=true},[s.groupId,s.channelId,s.dmTarget]);
- function scrollHistoryToEnd(){const history=bottom.current?.parentElement;if(history)history.scrollTop=history.scrollHeight}
- useEffect(()=>{if(atBottom.current&&!s.before)scrollHistoryToEnd()},[d.messages.length,d.dms.length,s.channelId,s.dmTarget]);
- useEffect(()=>{if(!notice)return;const t=setTimeout(()=>setNotice(''),6000);return()=>clearTimeout(t)},[notice]);
- useEffect(()=>{if(!call.joined)setDeaf(false)},[call.joined]);
- useEffect(()=>{localStorage.setItem('voz-output-device',output)},[output]);
- useEffect(()=>{if(!group)return;let alive=true,t:any;const poll=async()=>{try{const r=await fetch('/api/presence?space='+group.space,{headers:{Authorization:'Bearer '+localStorage.getItem('tatico-credential')}});const j=await r.json();if(alive&&r.ok)setPresence(j.peers||[])}catch{}finally{if(alive)t=setTimeout(poll,document.hidden?10000:3500)}};const visible=()=>{if(!document.hidden){clearTimeout(t);void poll()}};document.addEventListener('visibilitychange',visible);void poll();return()=>{alive=false;clearTimeout(t);document.removeEventListener('visibilitychange',visible);setPresence([])}},[group?.id]);
- useEffect(()=>{if(voice&&!d.channels.some((c:Channel)=>c.id===voice.id)){call.leave();setVoice(null)}},[d.channels]);
- useEffect(()=>{
-  const key=(e:KeyboardEvent)=>{
-   if(e.key==='Escape'){setNav(false);setReply(null);setEditing(null)}
-   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setModal('search')}
-   if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.code==='KeyM'&&call.joined&&!deaf){e.preventDefault();call.toggleMute()}
-   if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.code==='KeyD'&&call.joined){e.preventDefault();deafen()}
-  };window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
- },[call.joined,call.muted,deaf]);
- useEffect(()=>{
-  const scope=s.groupId+':'+s.channelId+':'+s.dmTarget,rows=s.dmTarget?d.dms:d.messages;
-  if(incoming.current.scope!==scope){incoming.current={scope,id:0};setUnread(0)}
-  if(s.before||!rows.length)return;
-  const last=rows[rows.length-1].id,previous=incoming.current.id;
-  if(previous){const fresh=rows.filter((m:any)=>m.id>previous&&(m.userKey||m.sender)!==me?.userKey);if(fresh.length){
-   if(!atBottom.current||document.hidden)setUnread(n=>n+fresh.length);
-   if(fresh.some((m:any)=>m.body.includes('@['+me?.userKey+']')))setNotice('Você foi mencionado em #'+title);
-   else if(document.hidden)setNotice('Novas mensagens em '+title);
-  }}incoming.current.id=Math.max(previous,last);
- },[d.messages,d.dms,s.groupId,s.channelId,s.dmTarget,s.before]);
- function navigate(next:any){select(next);setNav(false)}
- function switchGroup(id:string){if(busy)return;if(id!==group?.id){call.leave();setVoice(null);navigate({groupId:id,channelId:'',dmTarget:''})}}
- async function enter(c:Channel){if(timedOut){setNotice('Você está em timeout neste servidor e não pode entrar na voz agora.');return}if(call.space!==group?.space){setNotice('Preparando a sala. Tente novamente em um instante.');return}if(call.busy||busy||call.joined&&voice?.id===c.id)return;call.leave();setVoice(c);setSpeaking({});await unlockRoomAudio();await call.join(me?.name||'Visitante',me?.avatar||'',c.roomKey.slice(37))}
- function deafen(){if(!deaf){muteBefore.current=call.muted;if(!call.muted)call.toggleMute();setDeaf(true)}else{setDeaf(false);if(!muteBefore.current&&call.muted)call.toggleMute()}}
- async function copy(text:string){try{await navigator.clipboard.writeText(text);setNotice('Copiado.')}catch{setNotice(text)}}
- function open(k:string,v=''){setInput(v);setModal(k)}
- function signOut(){call.leave();clearLocalIdentity();location.reload()}
- async function submit(){let extra:any={};if(['create','rename','channelRename','channelCreate'].includes(modal))extra={name:input,kind};if(modal==='join')extra={code:input};if(modal==='deleteMessage')extra={messageId:Number(input)};const j=await act(modal,extra);if(j){if(['create','join','delete','leave'].includes(modal)){call.leave();setVoice(null)}setModal('');setNotice('Alteração concluída.');if(modal==='join'){const url=new URL(location.href);url.searchParams.delete('invite');history.replaceState(null,'',url)}}}
- async function send(){if(uploading)return;if(!draft.trim()&&!attachment&&!editing?.attachmentId)return;const j=await act(s.dmTarget?'dmSend':editing?'editMessage':'message',{message:draft,target:s.dmTarget,replyId:reply?.id,messageId:editing?.id,attachmentId:editing?undefined:attachment?.id,nonce:crypto.randomUUID()});if(j){setDraft('');setReply(null);setEditing(null);setAttachment(null);atBottom.current=true}}
- async function upload(file?:File){if(!file)return;const allowed=['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm'];if(!allowed.includes(file.type)){setError('Envie uma imagem JPG, PNG, WEBP ou GIF, ou um vídeo MP4/WEBM.');return}if(file.size>10*1024*1024){setError('O arquivo pode ter no máximo 10 MB.');return}setUploading(true);setError('');try{const r=await fetch('/api/upload',{method:'POST',headers:{Authorization:'Bearer '+(localStorage.getItem('tatico-credential')||''),'Content-Type':file.type,'X-File-Name':encodeURIComponent(file.name)},body:file});const j=await r.json();if(!r.ok)throw Error(j.error||'Não foi possível enviar o arquivo.');setAttachment(j)}catch(e:any){setError(e.message)}finally{setUploading(false)}}
- function type(text:string){setDraft(text);if(!s.dmTarget&&Date.now()-typingAt.current>2500){typingAt.current=Date.now();void api('typing',s).catch(()=>{})}}
- const rows=s.dmTarget?d.dms:pins?d.pinned:d.messages;
- const titles:Record<string,string>={create:'Criar servidor',join:'Entrar em um servidor',rename:'Renomear servidor',channelCreate:'Criar canal',channelRename:'Renomear canal',delete:'Excluir servidor?',leave:'Sair do servidor?',channelDelete:'Excluir canal?',invite:'Revogar convite atual?',deleteMessage:'Excluir mensagem?'};
- const destructive=['delete','leave','channelDelete','invite','deleteMessage'].includes(modal);
- return <div className={'tactical-app '+(nav?'nav-open':'')}>
- <a className="skip-link" href="#conversation">Ir para a conversa</a>{nav&&<button className="nav-scrim" aria-label="Fechar canais" onClick={()=>setNav(false)}/>}
- <nav className="server-rail" aria-label="Servidores"><div className="brand-mark" title="Vértice"><Shield size={26}/></div><div className="rail-line"/>{d.groups.map((g:any)=><button key={g.id} title={g.name} aria-label={g.name} aria-current={g.id===group?.id} className={'server-icon '+(g.id===group?.id?'selected':'')} onClick={()=>switchGroup(g.id)}>{g.name.slice(0,2).toUpperCase()}</button>)}<button className="server-icon add" aria-label="Criar servidor" title="Criar servidor" onClick={()=>open('create')}><Plus/></button><button className="server-icon" aria-label="Entrar por convite" title="Entrar por convite" onClick={()=>open('join')}><Users size={21}/></button><span className="rail-bottom">V / 04</span></nav>
- <aside className="sidebar" aria-label="Canais e conta"><button className="nav-close" aria-label="Fechar canais" onClick={()=>setNav(false)}><X size={20}/></button><header className="server-heading"><div><small>VÉRTICE / COMUNIDADES</small><strong>{group?.name||'Sua central'}</strong></div><button aria-label="Gerenciar servidor" disabled={!group} onClick={()=>open('server')}><ChevronDown size={18}/></button></header><div className="channel-search"><Search size={16}/><input aria-label="Buscar canal" placeholder="Encontrar canal" value={search} onChange={e=>setSearch(e.target.value)}/></div>
- <div className="channel-list">{['text','voice'].map(k=><section key={k}><div className="category"><span>{k==='text'?'CANAIS DE TEXTO':'CANAIS DE VOZ'}</span>{manage&&<button aria-label={'Criar canal de '+(k==='text'?'texto':'voz')} onClick={()=>{setKind(k);open('channelCreate')}}><Plus size={15}/></button>}</div>{d.channels.filter((c:Channel)=>c.kind===k&&c.name.toLowerCase().includes(search.toLowerCase())).map((c:Channel)=><div key={c.id}><button className={'channel-button '+(c.id===channel?.id&&!s.dmTarget?'active':'')} onClick={()=>{navigate({channelId:c.id,dmTarget:''});if(c.kind==='voice')void enter(c)}}>{k==='text'?<Hash size={19}/>:<Volume2 size={19}/>}<span>{c.name}</span>{call.joined&&voice?.id===c.id&&<i className="status-dot online"/>}</button>{k==='voice'&&presence.filter(p=>c.roomKey===group.space+'-'+p.channel).map(p=><div className="voice-person" key={p.id}><i className="status-dot online"/>{p.name}</div>)}</div>)}</section>)}
- <section><div className="category"><span>MENSAGENS DIRETAS</span><MessageCircle size={14}/></div>{d.members.filter((m:any)=>m.userKey!==me?.userKey).map((m:any)=><button key={m.userKey} className={'channel-button '+(s.dmTarget===m.userKey?'active':'')} onClick={()=>navigate({dmTarget:m.userKey})}><Avatar name={m.name} src={m.avatar} className="mini-avatar"/><span>{m.name}</span><i className={'status-dot '+m.presence}/></button>)}{d.members.length<2&&<p className="sidebar-hint">Convide alguém para começar uma conversa.</p>}</section></div>
- {call.joined&&<div className="connection-panel"><span><Radio size={16}/> {Object.values(call.peerStates).some(v=>v==='reconnecting'||v==='failed')?'Reconectando voz…':'Voz conectada'}</span><strong>{voice?.name}</strong><button aria-label="Desconectar voz" onClick={()=>{call.leave();setVoice(null)}}><PhoneOff size={18}/></button><button className="share-shortcut" disabled={call.shareBusy} onClick={()=>void call.share()}><MonitorUp size={16}/>{call.sharing?'Parar transmissão':'Transmitir tela'}</button></div>}
- <div className="user-panel"><button onClick={()=>open('settings')} aria-label="Editar perfil"><Avatar src={me?.avatar} name={me?.name||'V'} className="user-avatar"/></button><div className="user-info"><strong>{me?.name||'Visitante'}</strong><small><i className={'status-dot '+(me?.presence||'offline')}/>{states[me?.presence||'offline']}</small></div><button title="Microfone" aria-label={call.muted?"Ativar microfone":"Silenciar microfone"} aria-pressed={call.muted} disabled={!call.joined||deaf} className={call.muted?'danger':''} onClick={call.toggleMute}>{call.muted?<MicOff size={17}/>:<Mic size={17}/>}</button><button title="Ensurdecer" aria-label={deaf?"Voltar a ouvir":"Ensurdecer"} aria-pressed={deaf} disabled={!call.joined} className={deaf?'danger':''} onClick={deafen}><Headphones size={17}/></button><button title="Configurações" aria-label="Configurações" onClick={()=>open('settings')}><Settings size={17}/></button><button title="Sair da conta" aria-label="Sair da conta" onClick={signOut}><LogOut size={17}/></button></div></aside>
- <main className="workspace" id="conversation" tabIndex={-1}><header className="topbar"><button className="mobile-menu" aria-label="Mostrar canais" aria-expanded={nav} onClick={()=>setNav(v=>!v)}><Menu size={20}/></button><div className="room-title">{s.dmTarget?<MessageCircle size={22}/>:channel?.kind==='voice'?<Volume2 size={22}/>:<Hash size={22}/>}<strong>{title}</strong><span>{s.dmTarget?'Mensagem direta':channel?.topic||(channel?.kind==='voice'?'Sala de voz':'Conversa da equipe')}{!s.dmTarget&&channel?.slowmode?` · modo lento ${channel.slowmode}s`:''}</span></div><div className="header-actions"><button aria-label="Buscar mensagens" title="Buscar mensagens (Ctrl+K)" disabled={!channel} onClick={()=>open('search')}><Search size={20}/></button><button aria-label="Atalhos e modo TV" title="Atalhos e modo TV" onClick={()=>open('shortcuts')}>?</button>{group&&<button title="Convidar pessoas" aria-label="Convidar pessoas" onClick={()=>open('server')}><Users size={20}/></button>}{channel&&!s.dmTarget&&<><button title="Mensagens fixadas" aria-label="Mensagens fixadas" className={pins?'accent':''} onClick={()=>setPins(v=>!v)}><Pin size={19}/></button>{manage&&<button title="Editar canal" aria-label="Editar canal" onClick={()=>open('channelSettings')}><Pencil size={18}/></button>}</>}<button title="Lista de membros" aria-label="Lista de membros" aria-expanded={members} onClick={()=>setMembers(v=>!v)}><Menu size={20}/></button></div></header>
- {(error||notice||call.error)&&<div className={'feedback '+(error?'error':'')} role="status">{error||notice||call.error}<button aria-label="Fechar aviso" onClick={()=>{setError('');setNotice('');call.clearError()}}><X size={15}/></button></div>}
- <div className="workspace-body"><div className="conversation">
- {!group?<div className="welcome"><div className="welcome-emblem"><Shield size={44}/></div><small>SEU PONTO DE ENCONTRO</small><h1>Uma base para sua equipe.</h1><p>Reúna suas pessoas. Organize as conversas.<br/>Entre na voz quando quiser.</p><div className="welcome-actions"><button className="primary" disabled={!ready} onClick={()=>open('create')}><Plus size={18}/> Criar servidor</button><button className="secondary" disabled={!ready} onClick={()=>open('join')}>Tenho um convite</button></div>{!ready&&<button onClick={()=>open('settings')}>Restaurar chave de acesso</button>}</div>:<>
- {channel?.kind==='voice'&&!s.dmTarget&&<div className="voice-stage"><div className="stage-heading"><div><small>CANAL DE VOZ</small><h2>{channel.name}</h2></div>{(!call.joined||voice?.id!==channel.id)&&<button className="primary" disabled={call.busy||timedOut} onClick={()=>void enter(channel)}><Mic size={17}/>{call.busy?'Conectando…':'Entrar na voz'}</button>}</div>{call.joined&&<><SpeakingSensor stream={call.localStream} enabled={!call.muted} sensitivity={sensitivity} onChange={v=>call.self&&setSpeaking(old=>old[call.self!]===v?old:{...old,[call.self!]:v})}/><div className="participant-grid">{call.people.map(p=><div className={'participant '+(speaking[p.id]?'speaking':'')} key={p.id}><Avatar name={p.name} src={call.avatars[p.id]} className="participant-avatar"/><strong>{p.name}</strong><small>{speaking[p.id]?'Falando':p.id===call.self?(call.muted?'Microfone desligado':'Você'):({connected:'Conectado',reconnecting:'Reconectando…',failed:'Falha na conexão',connecting:'Conectando…',new:'Preparando…'}[call.peerStates[p.id]]||'Conectando…')}</small></div>)}</div><div className="voice-controls"><button aria-pressed={call.muted} disabled={deaf} onClick={call.toggleMute}>{call.muted?<MicOff size={17}/>:<Mic size={17}/>} {call.muted?'Ativar microfone':'Silenciar'}</button><button aria-pressed={deaf} onClick={deafen}><Headphones size={17}/>{deaf?'Voltar a ouvir':'Ensurdecer'}</button><button className="danger" onClick={()=>{call.leave();setVoice(null)}}><PhoneOff size={17}/>Sair da voz</button><button disabled={call.shareBusy} onClick={()=>void call.share()}><MonitorUp size={17}/>{call.shareBusy?'Preparando…':call.sharing?'Parar tela':'Transmitir'}</button><select aria-label="Qualidade da transmissão" value={call.shareQuality} onChange={e=>void call.setShareQuality(e.target.value as ShareQuality)}>{Object.entries(qualities).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><button onClick={()=>{void unlockRoomAudio();call.repairAudio()}}>Reconectar áudio</button><small className="stream-health" role="status">{call.sharing?call.networkQuality:call.shareBusy?'Escolha uma tela na janela do navegador.':'Você decide quando ligar o microfone ou transmitir.'}</small></div></>}</div>}
- <div className="messages" onScroll={e=>{const el=e.currentTarget;atBottom.current=el.scrollHeight-el.scrollTop-el.clientHeight<90;if(atBottom.current)setUnread(0)}}><div className="chat-intro"><span className="chat-symbol">{s.dmTarget?<MessageCircle size={26}/>:<Hash size={28}/>}</span><h2>{pins?'Mensagens fixadas':s.dmTarget?title:'Bem-vindo a #'+title}</h2><p>{pins?'Os recados importantes ficam por aqui.':s.dmTarget?'Uma conversa entre vocês.':'Este é o começo da conversa. Faça parte.'}</p></div>
- {!pins&&<div className="history-controls">{s.before>0&&<button onClick={()=>navigate({before:0})}>Voltar às mais recentes</button>}{rows.length===80&&<button onClick={()=>navigate({before:rows[0].id})}>Carregar anteriores</button>}</div>}{!rows.length&&<p className="empty-message">{pins?'Nenhuma mensagem fixada.':'Nenhuma mensagem por aqui ainda.'}</p>}
- {rows.map((m:any)=>{const sender=s.dmTarget?m.sender:m.userKey,p=d.members.find((p:any)=>p.userKey===sender),mine=sender===me?.userKey;return <article className={"message "+(m.body?.includes('@['+me?.userKey+']')?'mentioned':'')} key={m.id}><Avatar src={p?.avatar} name={p?.name||m.name||'Membro'} className="message-avatar"/><div className="message-content"><div className="message-head"><strong>{p?.name||m.name||'Membro'}</strong>{mine&&<span className="you-tag">VOCÊ</span>}<time dateTime={new Date(m.created).toISOString()}>{new Date(m.created).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</time>{m.edited&&<small>(editada)</small>}{!!m.pinned&&<Pin size={12}/>}</div>{m.reply&&<blockquote>{m.reply.name}: {m.reply.body||('📎 '+(m.reply.attachmentName||'anexo'))}</blockquote>}{m.body&&<p><MentionText text={m.body} members={d.members}/></p>}{m.attachmentId&&<div className="message-attachment">{m.attachmentType?.startsWith('image/')?<a href={m.attachmentUrl} target="_blank" rel="noreferrer" aria-label={'Abrir '+m.attachmentName}><img src={m.attachmentUrl} alt={m.attachmentName||'Imagem enviada'} loading="lazy"/></a>:<video src={m.attachmentUrl} controls preload="metadata" playsInline/>}<small>{m.attachmentName} · {Math.max(1,Math.round((m.attachmentSize||0)/1024))} KB</small></div>}{!s.dmTarget&&<div className="reactions">{m.reactions.map((r:any)=><button key={r.emoji} className={r.mine?'mine':''} onClick={()=>void act('react',{messageId:m.id,emoji:r.emoji})}>{r.emoji} {r.count}</button>)}</div>}</div>{!s.dmTarget&&<div className="message-tools"><button title="Responder" aria-label="Responder" onClick={()=>{setReply(m);setEditing(null);composerInput.current?.focus()}}><Reply size={15}/></button><details><summary aria-label="Adicionar reação">☺</summary><div className="emoji-picker">{['👍','❤️','🔥','😂','✅'].map(emoji=><button key={emoji} onClick={ev=>{void act('react',{messageId:m.id,emoji});ev.currentTarget.closest('details')?.removeAttribute('open')}}>{emoji}</button>)}</div></details>{mine&&<button title="Editar" aria-label="Editar mensagem" onClick={()=>{setEditing(m);setDraft(m.body);setReply(null);setAttachment(null)}}><Pencil size={14}/></button>}{moderate&&<button title="Fixar ou desafixar" aria-label="Fixar ou desafixar" onClick={()=>void act('pin',{messageId:m.id})}><Pin size={14}/></button>}{(mine||moderate)&&<button title="Excluir" aria-label="Excluir mensagem" onClick={()=>open('deleteMessage',String(m.id))}><Trash2 size={14}/></button>}</div>}</article>})}<div ref={bottom}/></div>
- {unread>0&&<button className="new-messages" onClick={()=>{navigate({before:0});setUnread(0);atBottom.current=true;scrollHistoryToEnd()}}>{unread} nova(s) mensagem(ns) · Ir para o final ↓</button>}
- <div className="compose-area">{(reply||editing)&&<div className="reply-bar">{editing?'Editando sua mensagem':'Respondendo a '+(reply.name||'mensagem')}<button aria-label="Cancelar edição ou resposta" onClick={()=>{setReply(null);setEditing(null);setDraft('')}}><X size={16}/></button></div>}{attachment&&<div className="attachment-draft">{attachment.type?.startsWith('image/')?<img src={attachment.url} alt="Prévia do anexo"/>:<video src={attachment.url} controls preload="metadata"/>}<span><strong>{attachment.name}</strong><small>{Math.max(1,Math.round(attachment.size/1024))} KB</small></span><button aria-label="Remover anexo" onClick={()=>setAttachment(null)}><X size={17}/></button></div>}{/(?:^|\s)@([^@\s]*)$/.test(draft)&&<div className="mention-picker" aria-label="Mencionar membro">{d.members.filter((m:any)=>m.name.toLowerCase().includes(draft.split('@').pop()!.toLowerCase())).slice(0,6).map((m:any)=><button key={m.userKey} onClick={()=>{setDraft(draft.replace(/@[^@\s]*$/,'@['+m.userKey+'] '));composerInput.current?.focus()}}>@{m.name}</button>)}</div>}<form className="composer" onSubmit={e=>{e.preventDefault();void send()}}><input ref={fileInput} className="attachment-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" onChange={e=>{void upload(e.target.files?.[0]);e.currentTarget.value=''}}/><button className="attach-button" type="button" title="Enviar imagem ou vídeo" aria-label="Anexar imagem ou vídeo" disabled={busy||uploading||!!editing||(timedOut&&!s.dmTarget)||(!channel&&!s.dmTarget)||!!s.dmTarget&&!d.dmAllowed} onClick={()=>fileInput.current?.click()}><Paperclip size={18}/></button><textarea ref={composerInput} aria-label="Mensagem" placeholder={'Conversar em '+(s.dmTarget?title:'#'+title)} maxLength={2000} rows={1} value={draft} disabled={(timedOut&&!s.dmTarget)||(!channel&&!s.dmTarget)||!!s.dmTarget&&!d.dmAllowed} onChange={e=>type(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send()}}}/><button className="send-button" type="submit" aria-label="Enviar mensagem" disabled={busy||uploading||(timedOut&&!s.dmTarget)||(!draft.trim()&&!attachment&&!editing?.attachmentId)||!!s.dmTarget&&!d.dmAllowed}><Send size={19}/></button></form><div className="composer-meta"><span>{uploading?'Enviando arquivo…':timedOut&&!s.dmTarget?'Você está em timeout neste servidor.':!s.dmTarget&&d.typing.length?d.typing.map((p:any)=>p.name).join(', ')+' digitando…':s.dmTarget&&!d.dmAllowed?'É necessário um servidor em comum.':'@ mencionar · Shift+Enter quebra linha · anexo até 10 MB'}</span><span>{draft.length}/2000</span></div></div>
- </>}</div>
- {members&&group&&<aside className="members-panel"><button className="members-close" aria-label="Fechar membros" onClick={()=>setMembers(false)}><X size={20}/></button><div className="category">MEMBROS — {d.members.length}</div>{['online','away','busy','offline'].map(status=><section key={status}>{d.members.some((m:any)=>m.presence===status)&&<h3>{states[status]}</h3>}{d.members.filter((m:any)=>m.presence===status).map((m:any)=><div className="member-row" key={m.userKey}><button className="member-main" title={m.status||m.name} onClick={()=>{if(m.userKey!==me?.userKey)navigate({dmTarget:m.userKey});else open('settings')}}><span className="member-avatar"><Avatar src={m.avatar} name={m.name} className="member-photo"/><i className={'status-dot '+m.presence}/></span><span><strong>{m.name}</strong><small>{m.status||roles[m.role]}</small></span></button>{group.role==='owner'&&m.role!=='owner'&&<select aria-label={'Cargo de '+m.name} value={m.role} onChange={e=>void act('role',{target:m.userKey,role:e.target.value})}>{['member','moderator','admin'].map(r=><option key={r} value={r}>{roles[r]}</option>)}</select>}</div>)}</section>)}<div className="members-footer"><Shield size={16}/><span>VÉRTICE<br/><small>Seu espaço. Sua equipe.</small></span></div></aside>}
- </div></main>
- {call.joined&&<div className="call-media">{call.people.filter(p=>p.id!==call.self&&call.streams[p.id]).map(p=><Media key={p.id} stream={call.streams[p.id]} audioMuted={deaf} outputDeviceId={output} sensitivity={sensitivity} onSpeaking={v=>setSpeaking(old=>old[p.id]===v?old:{...old,[p.id]:v})}/>)}</div>}
- {(call.screen||Object.values(call.remoteSharing).some(Boolean))&&<ScreenPanel><header><MonitorUp size={16}/> Transmissões <button disabled={call.shareBusy} onClick={()=>void call.share()}>{call.sharing?'Parar minha tela':'Transmitir'}</button></header>{call.screen&&<div><small>Sua tela</small><Media stream={call.screen} local forceVideo/></div>}{call.people.filter(p=>call.remoteSharing[p.id]).map(p=><div key={p.id}><small>{p.name}</small>{call.screenStreams[p.id]?<Media stream={call.screenStreams[p.id]} forceVideo audioMuted={deaf} outputDeviceId={output}/>:<p>Conectando transmissão…</p>}</div>)}</ScreenPanel>}
- <Dialog open={!!modal} onOpenChange={v=>!v&&setModal('')}><DialogContent className={'tactical-modal '+(modal==='settings'?'settings-modal':modal==='server'?'server-settings-modal':'')}><DialogTitle>{modal==='settings'?'Configurações':modal==='server'?'Configurações do servidor':modal==='channelSettings'?'Configurações do canal':modal==='search'?'Buscar nesta conversa':modal==='shortcuts'?'Navegação e atalhos':titles[modal]||'Vértice'}</DialogTitle><DialogDescription>{modal==='settings'?'Seu perfil e suas preferências de voz.':modal==='server'?'Gerencie membros, cargos, segurança e identidade do servidor.':modal==='channelSettings'?'Ajuste nome, tópico e velocidade das mensagens.':destructive?'Confira a ação antes de continuar.':'Escolha como sua equipe vai se encontrar.'}</DialogDescription>
- {modal==='search'&&<MessageSearch scope={s} onReply={m=>{setReply(m);setEditing(null);setModal('');setTimeout(()=>composerInput.current?.focus(),0)}}/>}
- {modal==='shortcuts'&&<div className="modal-stack"><label className="check-label"><input type="checkbox" checked={tv} onChange={e=>setTv(e.target.checked)}/>Modo TV: controles grandes e navegação pelas setas</label><p>Tab / Shift+Tab: próximo / anterior. Enter: ativar. Esc: fechar. Ctrl+K: buscar. Ctrl+Shift+M: microfone. Ctrl+Shift+D: ensurdecer.</p><p>Controle compatível: direcional ou analógico para navegar, A para ativar e B para voltar. Para escrever, use o teclado do dispositivo. Voz e captura de tela dependem do navegador.</p></div>}
- {modal==='server'&&group&&<ServerSettings group={group} data={d} act={act} busy={busy} copy={copy} setNotice={setNotice} onClose={()=>setModal('')} onLeaveOrDelete={async(action:string)=>{const j=await act(action);if(j){call.leave();setVoice(null);setModal('');setNotice(action==='delete'?'Servidor excluído.':'Você saiu do servidor.')}}}/>}
- {titles[modal]&&<form className="modal-stack" onSubmit={e=>{e.preventDefault();void submit()}}>{destructive?<p>{modal==='invite'?'O link e o código atuais deixarão de funcionar. Os membros permanecem no servidor.':modal==='leave'?'Você precisará de um convite para entrar novamente.':'Esta ação apaga o conteúdo selecionado e não pode ser desfeita.'}</p>:<label>{modal==='join'?'Código ou link de convite':'Nome'}<input autoFocus maxLength={modal==='join'?300:40} value={input} onChange={e=>setInput(e.target.value)} required/></label>}{modal==='channelCreate'&&<label>Tipo<select value={kind} onChange={e=>setKind(e.target.value)}><option value="text">Texto</option><option value="voice">Voz</option></select></label>}<button type="submit" className="primary" disabled={busy||(!destructive&&!input.trim())}>{busy?'Salvando…':destructive?'Confirmar':'Salvar'}</button>{modal==='channelRename'&&<button type="button" className="danger" onClick={()=>open('channelDelete')}>Excluir este canal</button>}</form>}
- {modal==='channelSettings'&&channel&&<ChannelSettings channel={channel} act={act} busy={busy} setNotice={setNotice} onClose={()=>setModal('')}/>}
- {modal==='settings'&&<CommunitySettings me={me} act={act} call={call} output={output} setOutput={setOutput} sensitivity={sensitivity} setSensitivity={setSensitivity} setError={setError} setNotice={setNotice} copy={copy} busy={busy} ready={ready} onLogout={signOut}/>}
- {error&&<p className="modal-error" role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
- </DialogContent></Dialog></div>;
+  const [channel,setChannel]=useState('Central');
+  const [name,setName]=useState('');
+  const call=useCall(channel);
+  const channels=['Central','Elite','Mobile'];
+  const remoteActive=useMemo(()=>call.broadcasters.filter(p=>p.id!==call.self),[call.broadcasters,call.self]);
+  const qualityLabels:Record<StreamQuality,string>={stable:'Estável 360p',balanced:'Equilibrada 540p',high:'Alta 720p'};
+
+  return <div className="bope-app">
+    <aside className="sidebar">
+      <div className="logo-block">
+        <div className="logo-icon"><Radio size={22}/></div>
+        <div>
+          <div className="logo-title">BOPE</div>
+          <div className="logo-sub">stream hub</div>
+        </div>
+      </div>
+
+      <div className="side-section">
+        <div className="side-label">salas</div>
+        <div className="channel-list">
+          {channels.map(item=><button key={item} className={`channel-btn ${item===channel?'active':''}`} onClick={()=>{if(item!==channel){call.leave();setChannel(item);}}}>
+            <MonitorPlay size={16}/>
+            <span>{item}</span>
+            {item===channel&&call.joined&&<i/>}
+          </button>)}
+        </div>
+      </div>
+
+      <div className="side-panel mobile-ok">
+        <Smartphone size={18}/>
+        <div>
+          <strong>Total mobile</strong>
+          <p>Layout leve, responsivo e pronto para assistir do celular.</p>
+        </div>
+      </div>
+
+      <div className="side-panel quality-box">
+        <Shield size={18}/>
+        <div>
+          <strong>Foco em transmissão</strong>
+          <p>Sem call complexa. Só entrar, assistir e transmitir com qualidade.</p>
+        </div>
+      </div>
+    </aside>
+
+    <main className="content">
+      <header className="topbar">
+        <div>
+          <div className="crumb">BOPE / {channel}</div>
+          <h1>Transmissão ao vivo em vermelho e preto.</h1>
+          <p>Site reformulado para ficar mais leve, bonito e centrado em streaming.</p>
+        </div>
+        <div className="topbar-actions">
+          <button className="ghost-btn" onClick={call.invite}><LinkIcon size={16}/> convite</button>
+          {call.joined&&<button className="danger-btn" onClick={call.leave}><LogOut size={16}/> sair</button>}
+        </div>
+      </header>
+
+      {!call.joined ? (
+        <section className="hero-grid">
+          <div className="hero-card">
+            <div className="eyebrow">AO VIVO · LEVE · MOBILE</div>
+            <h2>Entre na sala e foque só na transmissão.</h2>
+            <p>Nada de tela poluída. O BOPE foi reformulado para priorizar vídeo, estabilidade e visual bonito em desktop e celular.</p>
+            <label htmlFor="name" className="field-label">Seu nome</label>
+            <input id="name" className="text-input" value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!call.busy)void call.join(name)}} maxLength={30} placeholder="Ex: zen"/>
+            <button className="primary-btn" disabled={call.busy} onClick={()=>call.join(name)}><MonitorUp size={18}/>{call.busy?'Entrando...':'Entrar na sala'}</button>
+            <div className="hero-mini-stats">
+              <span><Users size={14}/> até 10 pessoas</span>
+              <span><Wifi size={14}/> vídeo em tempo real</span>
+              <span><Gauge size={14}/> qualidade ajustável</span>
+            </div>
+            {call.error&&<div className="notice">{call.error}</div>}
+          </div>
+
+          <div className="preview-card">
+            <div className="preview-screen">
+              <div className="preview-badge">BOPE LIVE</div>
+              <div className="preview-box">
+                <div className="preview-head">Central · qualidade {qualityLabels[call.quality]}</div>
+                <div className="preview-layout">
+                  <div className="fake-video"><span>transmissão principal</span></div>
+                  <div className="fake-side">
+                    <div className="fake-person">ZE</div>
+                    <div className="fake-person">JO</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="stream-layout">
+          <div className="main-column">
+            {call.error&&<div className="notice">{call.error}</div>}
+
+            {remoteActive.length>0 ? (
+              <div className="remote-grid">
+                {remoteActive.map(person=>call.streams[person.id] ? <VideoCard key={person.id} stream={call.streams[person.id]} label={person.name} tag="AO VIVO"/> : null)}
+              </div>
+            ) : (
+              <div className="empty-stream">
+                <MonitorPlay size={28}/>
+                <h3>Ninguém está transmitindo agora</h3>
+                <p>Use o botão abaixo para começar uma transmissão ou envie o convite para alguém assistir.</p>
+                <button className="ghost-btn large" onClick={call.invite}><LinkIcon size={16}/> copiar convite</button>
+              </div>
+            )}
+
+            {call.screen && <div className="local-area"><VideoCard stream={call.screen} label="Sua transmissão" tag="AO VIVO" muted/></div>}
+          </div>
+
+          <div className="side-column">
+            <div className="panel control-panel">
+              <div className="panel-title">controle rápido</div>
+              <div className="join-status">{channel} · {call.people.length} pessoa{call.people.length===1?'':'s'} na sala</div>
+              <div className="action-row">
+                <button className={`primary-btn ${call.sharing?'stop':''}`} onClick={call.share}><MonitorUp size={18}/>{call.sharing?'Parar transmissão':'Iniciar transmissão'}</button>
+                <button className="ghost-btn" onClick={call.invite}><LinkIcon size={16}/> convite</button>
+              </div>
+              <div className="quality-selector">
+                <div className="field-label">qualidade da transmissão</div>
+                <div className="quality-list">
+                  {(['stable','balanced','high'] as StreamQuality[]).map(item=><button key={item} className={`quality-btn ${call.quality===item?'active':''}`} onClick={()=>call.setQuality(item)}>{qualityLabels[item]}</button>)}
+                </div>
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-title">pessoas na sala</div>
+              <div className="people-list">
+                {call.people.map(person=><div className="person-row" key={person.id}>
+                  <div className="person-avatar">{initials(person.name)}</div>
+                  <div className="person-meta">
+                    <strong>{person.name}{person.id===call.self?' (você)':''}</strong>
+                    <span>{call.streams[person.id]?.getVideoTracks()?.length ? 'transmitindo agora' : 'assistindo'}</span>
+                  </div>
+                </div>)}
+              </div>
+            </div>
+
+            <div className="panel tips-panel">
+              <div className="panel-title">dicas de qualidade</div>
+              <ul>
+                <li><strong>Estável:</strong> melhor para internet fraca e celular.</li>
+                <li><strong>Equilibrada:</strong> recomendada para uso geral.</li>
+                <li><strong>Alta:</strong> melhor imagem, pede internet melhor.</li>
+                <li>No Chrome/Edge, marque compartilhar áudio se quiser enviar o som da aba.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+      )}
+    </main>
+  </div>;
 }

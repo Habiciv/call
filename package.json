@@ -1,16 +1,15 @@
 {
   "name": "voz-railway",
-  "version": "0.4.1",
+  "version": "0.1.0",
   "private": true,
   "engines": {
     "node": ">=24.0.0"
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "build": "vite build && node server/build.mjs",
     "start": "node server/index.mjs",
-    "test": "node --test server/test.mjs server/community.test.mjs server/admin.test.mjs server/migration.test.mjs server/rtc-media.test.mjs server/pro.test.mjs",
-    "typecheck": "node node_modules/typescript/bin/tsc --noEmit"
+    "test": "node --test server/test.mjs"
   },
   "dependencies": {
     "react": "19.2.6",

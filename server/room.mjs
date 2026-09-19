@@ -1,61 +1,4 @@
-import { authorizeRoom,authorizePresence } from './access.mjs';
 import { database } from './db.mjs';
-const ID = /^[a-zA-Z0-9-]{36}$/;
-const ROOM = /^[a-zA-Z0-9-]{32,100}$/;
-const AVATAR = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
-function cleanName(value) {
-    const name = String(value || 'Visitante').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 30);
-    return name || 'Visitante';
-}
-function cleanAvatar(value) {
-    if (!value)
-        return '';
-    const avatar = String(value);
-    if (avatar.length > 24000 || !AVATAR.test(avatar))
-        throw new Error('AVATAR_INVALID');
-    return avatar;
-}
-function cleanMessage(value) {
-    const text = String(value || '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim().slice(0, 1000);
-    if (!text) throw new Error('MESSAGE_EMPTY');
-    return text;
-}
-function peerQuery() {
-    return "SELECT id,name,CASE WHEN avatar<>'' THEN 1 ELSE 0 END AS hasAvatar,profile_version AS avatarVersion FROM peers WHERE room=? AND seen>?";
-}
-
-export async function PRESENCE(req) {
-    try {
-        authorizePresence(req); const url = new URL(req.url);
-        const space = url.searchParams.get('space') || '';
-        if (!ID.test(space))
-            return Response.json({ error: 'Espaço inválido' }, { status: 400 });
-        const db = database(), now = Date.now();
-        const rows = db.prepare("SELECT id,room,client_key,name,CASE WHEN avatar<>'' THEN 1 ELSE 0 END AS hasAvatar,profile_version AS avatarVersion,seen FROM peers WHERE room LIKE ? AND seen>? ORDER BY seen DESC")
-            .bind(`${space}-%`, now - 30000).execute().results;
-        // Ao trocar de canal, o leave antigo pode levar alguns ms para chegar.
-        // Dedupe por client_key evita a mesma aba aparecer em dois canais ao mesmo tempo.
-        const clients = new Set();
-        const peers = [];
-        for (const row of rows) {
-            const key = row.client_key || row.id;
-            if (clients.has(key)) continue;
-            clients.add(key);
-            const prefix = `${space}-`;
-            if (!String(row.room).startsWith(prefix)) continue;
-            const channel = String(row.room).slice(prefix.length);
-            if (!channel || channel.length > 40) continue;
-            peers.push({ id: row.id, name: row.name, channel, hasAvatar: row.hasAvatar, avatarVersion: row.avatarVersion });
-        }
-        return Response.json({ peers }, { headers: { 'Cache-Control': 'no-store' } });
-    }
-    catch (error) {
-        if(error.status)return Response.json({error:error.message},{status:error.status});
-        console.error('Presence request failed:', error);
-        return Response.json({ error: 'Não foi possível carregar quem está nas calls.' }, { status: 500 });
-    }
-}
-
 export async function POST(req) {
     try {
         if (req.headers.get('origin') !== new URL(req.url).origin)
@@ -63,26 +6,12 @@ export async function POST(req) {
         const body = await req.text();
         if (body.length > 40000)
             return Response.json({ error: 'Dados muito grandes' }, { status: 413 });
-        const { action, room, id, token, clientKey, name, avatar, target, data, after, chatAfter, message } = JSON.parse(body);
-        if (!ROOM.test(room || '') || !ID.test(id || '') || !ID.test(token || ''))
+        const { action, room, id, token, name, target, data, after } = JSON.parse(body);
+        if (!/^[a-zA-Z0-9-]{32,100}$/.test(room || '') || !/^[a-zA-Z0-9-]{36}$/.test(id || '') || !/^[a-zA-Z0-9-]{36}$/.test(token || ''))
             return Response.json({ error: 'Sala inválida' }, { status: 400 });
-        if (!['join', 'poll', 'leave', 'signal', 'profile', 'avatar', 'chat'].includes(action))
-            return Response.json({ error: 'Ação inválida' }, { status: 400 });
         const db = database(), now = Date.now();
-        const account = authorizeRoom(req,room);
         if (action === 'join') {
-            const existing=await db.prepare('SELECT user_key FROM peers WHERE id=?').bind(id).first();
-            if(existing&&account&&existing.user_key!==account.user_key)return Response.json({error:'Identificador em uso.'},{status:403});
-            const safeAvatar = cleanAvatar(avatar), safeClientKey = ID.test(clientKey || '') ? clientKey : id;
-            // Recarregar a página ou reconectar não pode criar um segundo perfil.
-            // O client_key identifica esta aba e remove a presença antiga antes do novo join.
-            await db.prepare('DELETE FROM signals WHERE room=? AND (sender IN (SELECT id FROM peers WHERE room=? AND client_key=? AND id<>?) OR target IN (SELECT id FROM peers WHERE room=? AND client_key=? AND id<>?))').bind(room, room, safeClientKey, id, room, safeClientKey, id).run();
-            await db.prepare('DELETE FROM peers WHERE room=? AND client_key=? AND id<>?').bind(room, safeClientKey, id).run();
-            // OR REPLACE torna o JOIN idempotente para o mesmo navegador.
-            // Mesmo se duas requisições chegarem quase juntas, não estoura o
-            // índice único nem devolve erro 500 para o usuário.
-            const inserted = await db.prepare('INSERT OR REPLACE INTO peers(id,room,token,client_key,name,avatar,profile_version,seen) SELECT ?,?,?,?,?,?,?,? WHERE (SELECT count(*) FROM peers WHERE room=? AND seen>?) < 10').bind(id, room, token, safeClientKey, cleanName(name), safeAvatar, 1, now, room, now - 30000).run();
-            if(account)await db.prepare('UPDATE peers SET user_key=? WHERE id=? AND room=?').bind(account.user_key,id,room).run();
+            const inserted = await db.prepare('INSERT INTO peers(id,room,token,name,seen) SELECT ?,?,?,?,? WHERE (SELECT count(*) FROM peers WHERE room=? AND seen>?) < 10').bind(id, room, token, String(name || 'Visitante').slice(0, 30), now, room, now - 30000).run();
             if (!inserted.meta.changes)
                 return Response.json({ error: 'Sala cheia. O limite é de 10 pessoas.' }, { status: 409 });
         }
@@ -95,60 +24,17 @@ export async function POST(req) {
                 return Response.json({ ok: true });
             }
             if (action === 'signal') {
-                if (!ID.test(target || '') || target === id || !data || JSON.stringify(data).length > 32000)
+                if (!target || !data || JSON.stringify(data).length > 32000)
                     return Response.json({ error: 'Sinal inválido' }, { status: 400 });
-                await db.prepare('UPDATE peers SET seen=? WHERE id=?').bind(now, id).run();
                 await db.prepare('INSERT INTO signals(room,sender,target,data,created) SELECT ?,?,?,?,? WHERE EXISTS (SELECT 1 FROM peers WHERE id=? AND room=? AND seen>?)').bind(room, id, target, JSON.stringify(data), now, target, room, now - 30000).run();
                 return Response.json({ ok: true });
             }
-            if (action === 'chat') {
-                const bodyText = cleanMessage(message);
-                const profile = await db.prepare('SELECT name FROM peers WHERE id=? AND room=? AND token=?').bind(id, room, token).first();
-                if (!profile) return Response.json({ error: 'Sua conexão expirou. Entre novamente.' }, { status: 401 });
-                await db.prepare('UPDATE peers SET seen=? WHERE id=?').bind(now, id).run();
-                await db.prepare('INSERT INTO messages(room,sender,name,body,created) VALUES(?,?,?,?,?)').bind(room, id, cleanName(profile.name), bodyText, now).run();
-            }
-            if (action === 'avatar') {
-                if (!ID.test(target || ''))
-                    return Response.json({ error: 'Perfil inválido' }, { status: 400 });
-                await db.prepare('UPDATE peers SET seen=? WHERE id=?').bind(now, id).run();
-                const profile = await db.prepare('SELECT avatar,profile_version AS avatarVersion FROM peers WHERE id=? AND room=? AND seen>?').bind(target, room, now - 30000).first();
-                if (!profile)
-                    return Response.json({ error: 'Pessoa não encontrada na sala.' }, { status: 404 });
-                return Response.json(profile, { headers: { 'Cache-Control': 'no-store' } });
-            }
-            if (action === 'profile') {
-                const safeAvatar = cleanAvatar(avatar);
-                await db.prepare('UPDATE peers SET name=?,avatar=?,profile_version=profile_version+1,seen=? WHERE id=? AND token=?').bind(cleanName(name), safeAvatar, now, id, token).run();
-            }
-            else {
-                await db.prepare('UPDATE peers SET seen=? WHERE id=?').bind(now, id).run();
-            }
+            await db.prepare('UPDATE peers SET seen=? WHERE id=?').bind(now, id).run();
         }
-        const chatCursor = Math.max(0, Number(chatAfter) || 0);
-        const messageQuery = chatCursor > 0
-            ? db.prepare('SELECT id,sender,name,body,created FROM messages WHERE room=? AND id>? ORDER BY id ASC LIMIT 100').bind(room, chatCursor)
-            : db.prepare('SELECT id,sender,name,body,created FROM (SELECT id,sender,name,body,created FROM messages WHERE room=? ORDER BY id DESC LIMIT 50) ORDER BY id ASC').bind(room);
-        const results = await db.batch([
-            db.prepare(peerQuery()).bind(room, now - 30000),
-            db.prepare('SELECT id,sender,data FROM signals WHERE room=? AND target=? AND id>? ORDER BY id LIMIT 100').bind(room, id, Number(after) || 0),
-            messageQuery,
-            db.prepare('DELETE FROM signals WHERE room=? AND created<?').bind(room, now - 120000),
-            db.prepare('DELETE FROM peers WHERE room=? AND seen<?').bind(room, now - 120000),
-            db.prepare('DELETE FROM messages WHERE created<?').bind(now - 7 * 24 * 60 * 60 * 1000),
-        ]);
-        return Response.json({ peers: results[0].results, signals: results[1].results, messages: results[2].results }, { headers: { 'Cache-Control': 'no-store' } });
+        const results = await db.batch([db.prepare('SELECT id,name FROM peers WHERE room=? AND seen>?').bind(room, now - 30000), db.prepare('SELECT id,sender,data FROM signals WHERE room=? AND target=? AND id>? ORDER BY id LIMIT 100').bind(room, id, Number(after) || 0), db.prepare('DELETE FROM signals WHERE room=? AND created<?').bind(room, now - 120000), db.prepare('DELETE FROM peers WHERE room=? AND seen<?').bind(room, now - 120000)]);
+        return Response.json({ peers: results[0].results, signals: results[1].results }, { headers: { 'Cache-Control': 'no-store' } });
     }
-    catch (error) {
-        if(error.status)return Response.json({error:error.message},{status:error.status});
-        if (error instanceof Error && error.message === 'MESSAGE_EMPTY')
-            return Response.json({ error: 'Digite uma mensagem antes de enviar.' }, { status: 400 });
-        if (error instanceof Error && error.message === 'AVATAR_INVALID')
-            return Response.json({ error: 'A foto de perfil é inválida ou ficou grande demais.' }, { status: 400 });
-        console.error('Room request failed:', error);
+    catch {
         return Response.json({ error: 'Não foi possível conectar à sala. Tente novamente.' }, { status: 500 });
     }
 }
-
-
-

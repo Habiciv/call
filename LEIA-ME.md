@@ -1,28 +1,28 @@
-# Voz Railway — Grupos + Chat + tema Operações
+# BOPE — versão focada em transmissão
 
-Versão com:
+Esta versão foi reformulada para:
 
-- grupos persistentes no SQLite;
-- criar grupo e entrar por código de convite;
-- lista de grupos na barra lateral;
-- chat persistente por grupo, mesmo fora da call;
-- lista de membros do grupo;
-- canais de voz separados por grupo;
-- convite para adicionar pessoas ao grupo;
-- dono do grupo pode excluir o grupo; membros podem sair;
-- WebRTC/TURN e transmissão 4K adaptativa mantidos;
-- visual preto/grafite + verde inspirado em estética tática/BOPE, sem usar brasão ou logotipo oficial.
+- remover o foco em call/microfone;
+- priorizar **transmissão de tela**;
+- deixar o site **mais leve**;
+- aplicar tema **vermelho e preto**;
+- melhorar a experiência em **mobile**.
 
-## Railway
+## O que mudou
 
-Mantenha as variáveis TURN já configuradas:
+- novo layout BOPE;
+- entrada simples na sala;
+- transmissão com 3 qualidades:
+  - Estável 360p
+  - Equilibrada 540p
+  - Alta 720p
+- lista de pessoas na sala;
+- visualização das transmissões ativas;
+- suporte para áudio da aba/tela quando o navegador permitir;
+- interface responsiva para celular.
 
-- `TURN_URL`
-- `TURN_USERNAME`
-- `TURN_CREDENTIAL`
+## Deploy
 
-O banco usa `DATA_DIR=/data` no Railway e cria/migra as novas tabelas automaticamente.
+Envie o conteúdo desta pasta para a raiz do repositório e rode o deploy no Railway.
 
-## Observação
-
-O sistema de grupos usa uma identidade local gerada no navegador (`localStorage`). Ele é adequado para este projeto sem login, mas não substitui autenticação real caso você queira contas, permissões fortes ou moderação avançada no futuro.
+Depois faça `Ctrl + F5` no navegador para limpar o cache do front-end antigo.
