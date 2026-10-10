@@ -110,3 +110,55 @@ button:hover:not(:disabled){filter:brightness(1.1)}
  .live-count,.viewer-count{font-size:11px}
 }
 @media(hover:none){button:hover:not(:disabled){filter:none}button,a{touch-action:manipulation}}
+
+/* Immersive, edge-to-edge playback on desktop and mobile. */
+.share-card:fullscreen,
+.share-card.share-expanded{
+  width:100vw!important;height:100dvh!important;min-height:100dvh!important;
+  max-width:none!important;max-height:none!important;margin:0!important;
+  padding:0!important;border:0!important;border-radius:0!important;
+  outline:0!important;box-shadow:none!important;overflow:hidden!important;
+  background:#000!important;gap:0!important;
+}
+.share-card:fullscreen .share-card-head,
+.share-card.share-expanded .share-card-head{display:none!important}
+.share-card:fullscreen .video-surface,
+.share-card.share-expanded .video-surface{
+  position:absolute;inset:0;width:100%;height:100%;max-height:none!important;
+  min-height:0;aspect-ratio:auto;flex:none;background:#000;
+}
+.share-card:fullscreen .screen-video,
+.share-card.share-expanded .screen-video{
+  width:100%;height:100%;object-fit:contain;background:#000;
+}
+.share-card:fullscreen .screen-loading,
+.share-card.share-expanded .screen-loading{background:#000c}
+.share-card:fullscreen .share-player-controls,
+.share-card.share-expanded .share-player-controls{
+  position:absolute;z-index:5;top:env(safe-area-inset-top, 0px);right:env(safe-area-inset-right, 0px);
+  left:auto;width:auto;max-width:100%;padding:10px;background:linear-gradient(135deg,#0009,transparent);
+  border:0;pointer-events:none;
+}
+.share-card:fullscreen .share-player-controls>span,
+.share-card.share-expanded .share-player-controls>span{display:none}
+.share-card:fullscreen .fullscreen-button,
+.share-card.share-expanded .fullscreen-button{
+  pointer-events:auto;min-height:44px;min-width:44px;border-color:#ffffff45;
+  border-radius:999px;background:#111a;color:#fff;backdrop-filter:blur(12px);
+}
+.share-card:fullscreen .video-controls,
+.share-card.share-expanded .video-controls{
+  position:absolute;z-index:5;bottom:env(safe-area-inset-bottom, 0px);left:0;right:0;
+  min-height:54px;padding:8px 14px calc(8px + env(safe-area-inset-bottom, 0px));
+  border:0;background:linear-gradient(0deg,#000c,transparent);backdrop-filter:none;
+}
+.share-card:fullscreen .audio-controls button,
+.share-card:fullscreen .video-extras button,
+.share-card.share-expanded .audio-controls button,
+.share-card.share-expanded .video-extras button{color:#fff;background:#1119;border-radius:999px}
+.share-card:fullscreen .resolution,
+.share-card.share-expanded .resolution{color:#fff;font-size:11px}
+@media(max-width:700px){
+ .share-card:fullscreen .video-controls,.share-card.share-expanded .video-controls{padding-left:12px;padding-right:12px}
+ .share-card:fullscreen .audio-controls input,.share-card.share-expanded .audio-controls input{width:72px}
+}

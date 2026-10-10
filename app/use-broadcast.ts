@@ -183,8 +183,10 @@ export function useBroadcast(channel:string){
    // Each viewer gets a copy. Bound total upload without dropping all streams to 360p.
    const enc=params.encodings[0];
    const budget=Math.min(preset.bitrate,12000000/remoteCount);
-   enc.maxBitrate=Math.round(budget);enc.maxFramerate=preset.fps;
-   enc.scaleResolutionDownBy=Math.max(1,Math.sqrt(preset.bitrate/budget));
+   // Prefer stable frame pacing when sending to multiple viewers; reduce each copy's load.
+   const safeBudget=Math.max(650000,budget);
+   enc.maxBitrate=Math.round(safeBudget);enc.maxFramerate=preset.fps;
+   enc.scaleResolutionDownBy=Math.max(1,Math.sqrt(preset.bitrate/safeBudget));
    enc.priority='high';enc.networkPriority='high';
    params.degradationPreference=shareQualityRef.current==='ultra'?'maintain-framerate':'balanced';
    await sender.setParameters(params);
@@ -531,7 +533,7 @@ export function useBroadcast(channel:string){
   setError('');shareLock.current=true;setShareBusy(true);
   try{
    if(display.current){await stopScreen();return;}
-   if(!navigator.mediaDevices?.getDisplayMedia)throw Error('O compartilhamento de tela está disponível em navegadores compatíveis no computador.');
+   if(!navigator.mediaDevices?.getDisplayMedia)throw Error('Este navegador não permite solicitar captura de tela pelo site. No Android, tente abrir o ZENZ no Chrome atualizado. Ao tocar em Transmitir, o navegador abre a tela nativa de permissão quando esse recurso é compatível; o site não consegue forçar essa permissão. Em alguns celulares e navegadores, a transmissão de tela não é suportada.');
    const preset=QUALITY[shareQualityRef.current];
    const stream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:preset.width,max:preset.width},height:{ideal:preset.height,max:preset.height},frameRate:{ideal:preset.fps,max:preset.fps}},audio:true});
    if(session.current!==activeSession){stream.getTracks().forEach(t=>t.stop());return;}

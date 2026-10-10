@@ -56,5 +56,5 @@ const server=createServer(async(req,res)=>{try{
  try{if(!(await stat(path)).isFile())throw Error()}catch{res.writeHead(404);res.end('Not found');return}
  const bytes=await readFile(path);res.writeHead(200,{'Content-Type':mime[extname(path)]||'application/octet-stream','Cache-Control':path.endsWith('.html')?'no-cache':'public,max-age=3600'});res.end(req.method==='HEAD'?undefined:bytes);
 }catch(e){console.error('Request failed:',e.message);if(!res.headersSent)res.writeHead(500);res.end('Internal error')}});
-server.listen(port,'0.0.0.0',()=>console.log(`BOPE listening on ${port}`));
+server.listen(port,'0.0.0.0',()=>console.log(`ZENZ listening on ${port}`));
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));

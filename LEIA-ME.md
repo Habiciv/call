@@ -1,12 +1,12 @@
-# VYRO Cast — Transmissões
+# ZENZ — Transmissões
 
 Plataforma leve de transmissão de tela com tema violeta e azul-noite. Interface para computador e celular. Sem calls, câmera ou captura de microfone: o único áudio compartilhado é o da transmissão, quando o navegador oferece essa opção.
 
 ## O que mudou
 
-- Interface VYRO Cast refeita, com navegação mobile entre Assistir, Chat e Estúdio.
+- Interface ZENZ refeita, com navegação mobile entre Assistir, Chat e Estúdio.
 - Entrada na sala sem permissão de microfone; captura de microfone também bloqueada pela política HTTP.
-- Player com tela cheia nativa, saída por Esc e modo ampliado quando a Fullscreen API não está disponível.
+- Player imersivo sem bordas em tela cheia no PC e celular, vídeo ajustado à tela sem distorcer a proporção, controles sobrepostos e saída por Esc/botão; modo ampliado quando a Fullscreen API não está disponível.
 - Modo cinema, seleção de uma transmissão e mini-player (Picture-in-Picture quando suportado).
 - Áudio da transmissão com botão para ativar e controle de volume. Prévia local sempre silenciosa para evitar retorno.
 - Chat sincronizado entre participantes, reações rápidas, limite de 500 caracteres e proteção contra envio em sequência.
