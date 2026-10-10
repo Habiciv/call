@@ -84,3 +84,7 @@ Validações executadas: build de produção, checagem TypeScript, testes de API
 
 ## Limite importante em celulares
 A interface é responsiva e permite assistir/conversar pelo celular. Transmitir a tela inteira do próprio celular depende do suporte do navegador/sistema à API `getDisplayMedia`; iOS Safari e muitos navegadores Android não expõem essa API para páginas web. Não existe uma alteração apenas no layout que consiga contornar essa limitação do sistema. Em aparelhos compatíveis, o botão de transmissão é habilitado automaticamente.
+
+## Transmissão nativa por celular (base de implementação)
+
+Veja `mobile-transmitter/`. Contém o desenho de arquitetura para Android (`MediaProjection`) e iOS (`ReplayKit`) e o contrato do protocolo de sinalização atual. É scaffolding técnico, ainda não um aplicativo pronto: a ponte entre captura nativa e os tracks WebRTC/sinalização ZENZ precisa ser implementada e validada em aparelhos físicos antes de distribuir o app.
