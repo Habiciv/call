@@ -1,10 +1,10 @@
-# BOPE — Transmissões
+# VYRO Cast — Transmissões
 
-Plataforma leve de transmissão de tela com tema vermelho e preto. Interface para computador e celular. Sem calls, câmera ou captura de microfone: o único áudio compartilhado é o da transmissão, quando o navegador oferece essa opção.
+Plataforma leve de transmissão de tela com tema violeta e azul-noite. Interface para computador e celular. Sem calls, câmera ou captura de microfone: o único áudio compartilhado é o da transmissão, quando o navegador oferece essa opção.
 
 ## O que mudou
 
-- Interface BOPE refeita, com navegação mobile entre Assistir, Chat e Estúdio.
+- Interface VYRO Cast refeita, com navegação mobile entre Assistir, Chat e Estúdio.
 - Entrada na sala sem permissão de microfone; captura de microfone também bloqueada pela política HTTP.
 - Player com tela cheia nativa, saída por Esc e modo ampliado quando a Fullscreen API não está disponível.
 - Modo cinema, seleção de uma transmissão e mini-player (Picture-in-Picture quando suportado).
@@ -80,3 +80,7 @@ pnpm start
 `pnpm dev` inicia o Vite com proxy de `/api` para `http://localhost:8080`. Inicie o servidor separadamente para desenvolver com a API.
 
 Validações executadas: build de produção, checagem TypeScript, testes de API (incluindo autenticação/isolamento/rate limit do chat) e testes em Chromium/Edge headless com WebRTC real entre sessões separadas. O vídeo de teste foi gerado por canvas; o seletor de captura do sistema e aparelhos móveis físicos não foram automatizados. Foram testados entrada tardia, saída/retorno, chat, encerramento da captura, tela cheia, fallback e larguras de 320, 390 e 768 px.
+
+
+## Limite importante em celulares
+A interface é responsiva e permite assistir/conversar pelo celular. Transmitir a tela inteira do próprio celular depende do suporte do navegador/sistema à API `getDisplayMedia`; iOS Safari e muitos navegadores Android não expõem essa API para páginas web. Não existe uma alteração apenas no layout que consiga contornar essa limitação do sistema. Em aparelhos compatíveis, o botão de transmissão é habilitado automaticamente.
